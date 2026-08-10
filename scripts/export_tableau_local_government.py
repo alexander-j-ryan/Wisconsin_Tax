@@ -4,18 +4,20 @@
 This script:
 1) Downloads the Tableau workbook package from Tableau Public
 2) Unzips embedded .hyper extract files
-3) Exports every table in every schema from each .hyper file to CSV
+3) Exports every table in every schema from each .hyper file to Parquet/CSV
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
+import datetime as dt
 import re
 import shutil
 import zipfile
 from pathlib import Path
 
+import pandas as pd
 import requests
 from tableauhyperapi import Connection, CreateMode, HyperProcess, Telemetry
 
@@ -49,7 +51,33 @@ def unpack_workbook(workbook_path: Path, unpack_dir: Path) -> list[Path]:
     return sorted(unpack_dir.rglob("*.hyper"))
 
 
-def export_hyper_to_csv(hyper_path: Path, out_dir: Path, dataset_name: str) -> int:
+def write_table_csv(conn: Connection, query: str, col_names: list[str], out_csv: Path) -> None:
+    with out_csv.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(col_names)
+        result = conn.execute_query(query)
+        for row in result:
+            writer.writerow(list(row))
+
+
+def write_table_parquet(
+    conn: Connection, query: str, col_names: list[str], out_parquet: Path
+) -> None:
+    def normalize_value(value):
+        if value is None:
+            return None
+        if isinstance(value, (str, int, float, bool, bytes, dt.date, dt.datetime)):
+            return value
+        return str(value)
+
+    rows = [[normalize_value(v) for v in row] for row in conn.execute_query(query)]
+    df = pd.DataFrame(rows, columns=col_names)
+    df.to_parquet(out_parquet, index=False)
+
+
+def export_hyper_tables(
+    hyper_path: Path, out_dir: Path, dataset_name: str, export_format: str
+) -> int:
     dataset_dir = out_dir / dataset_name
     dataset_dir.mkdir(parents=True, exist_ok=True)
 
@@ -69,14 +97,13 @@ def export_hyper_to_csv(hyper_path: Path, out_dir: Path, dataset_name: str) -> i
 
                     schema_txt = safe_name(table_name.schema_name.name.unescaped)
                     table_txt = safe_name(table_name.name.unescaped)
-                    out_csv = dataset_dir / f"{schema_txt}__{table_txt}.csv"
-
-                    with out_csv.open("w", newline="", encoding="utf-8") as f:
-                        writer = csv.writer(f)
-                        writer.writerow(col_names)
-                        result = conn.execute_query(query)
-                        for row in result:
-                            writer.writerow(list(row))
+                    base_out = dataset_dir / f"{schema_txt}__{table_txt}"
+                    if export_format in ("csv", "both"):
+                        write_table_csv(conn, query, col_names, base_out.with_suffix(".csv"))
+                    if export_format in ("parquet", "both"):
+                        write_table_parquet(
+                            conn, query, col_names, base_out.with_suffix(".parquet")
+                        )
 
                     exported += 1
 
@@ -96,6 +123,12 @@ def main() -> None:
         "--base-dir",
         default=".",
         help="Project base directory (default: current directory)",
+    )
+    parser.add_argument(
+        "--format",
+        choices=("parquet", "csv", "both"),
+        default="parquet",
+        help="Output format (default: parquet)",
     )
     args = parser.parse_args()
 
@@ -119,7 +152,7 @@ def main() -> None:
     for idx, hp in enumerate(hyper_files, start=1):
         print(f"Exporting tables from: {hp}")
         dataset_name = f"{idx:02d}_{safe_name(hp.parent.name)}_{safe_name(hp.stem)}"
-        count = export_hyper_to_csv(hp, raw_dir, dataset_name)
+        count = export_hyper_tables(hp, raw_dir, dataset_name, args.format)
         total_tables += count
         print(f"  exported {count} table(s)")
 

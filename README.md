@@ -15,17 +15,27 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## Export all tables
+## Export all tables (Parquet default)
 
 ```bash
 python3 scripts/export_tableau_local_government.py --base-dir .
+```
+
+Optional formats:
+
+```bash
+# CSV only
+python3 scripts/export_tableau_local_government.py --base-dir . --format csv
+
+# Both parquet and csv
+python3 scripts/export_tableau_local_government.py --base-dir . --format both
 ```
 
 Outputs:
 
 - Downloaded workbook: `sources/LocalGovernmentDashboard_0.twb`
 - Unpacked extract files: `sources/workbook_unpacked/`
-- Exported CSV tables: `data/raw/<hyper_name>/<schema>__<table>.csv`
+- Exported tables: `data/raw/<hyper_name>/<schema>__<table>.parquet` (or `.csv`)
 
 ## Notes
 

@@ -1,2 +1,4 @@
 requests>=2.31.0
 tableauhyperapi>=0.0.26225
+pandas>=2.0.0
+pyarrow>=16.0.0
