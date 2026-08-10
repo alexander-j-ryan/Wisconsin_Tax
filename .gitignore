@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.venv/
+hyperd.log
+
+# Keep source workbook for reproducibility, ignore heavy exports
+data/raw/
+data/processed/
+sources/workbook_unpacked/
+sources/*.twb
+!data/raw/.gitkeep
+!data/processed/.gitkeep

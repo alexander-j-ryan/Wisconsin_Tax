@@ -1,0 +1,2 @@
+requests>=2.31.0
+tableauhyperapi>=0.0.26225
