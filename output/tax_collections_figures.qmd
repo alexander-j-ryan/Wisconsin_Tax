@@ -168,52 +168,103 @@ n_sd_income_positive <- sum(sd_income$sd_income > 0)
 
 Three things to read off @tbl-authority. First, **townships and special districts have only the property tax** — abolition leaves them with no broad local instrument at all. Second, **counties can reach a sales tax but not an income tax**; municipalities the reverse. Third, **schools have two tools** — property tax and a voted income tax — but rely overwhelmingly on the first (section iii). About `r n_sd_income_positive` (FY2026 SD-2) school districts and 600+ municipalities levy income taxes.
 
-The *rates* themselves vary enormously across space. The clearest example is the residential (Class I) school property-tax rate, which is what a homeowner actually pays per dollar of value after HB 920:
+The *rates* themselves vary enormously across space. The map below summarizes school-district property-tax millage using the Wisconsin TVC Tableau extract and the Wisconsin school-district boundaries.
 
 ```{r}
 #| label: fig-sd-rate
-#| fig-cap: "Class I (residential/agricultural) effective school property-tax millage, TY2025, with 20-mill-floor districts outlined in red (Lake Erie removed)."
-# Column positions mirror 06_writing/webpage/build_authority_maps.py's
-# section D (same source file): col 7 = Total Class I effective rate, col 29
-# = "Class I 20-mill Floor Rate". The at_floor rule (|floor rate - 20| <=
-# 0.01) and the red-outline convention are copied from that builder so this
-# static map and the interactive authority map read identically.
-sd_rates <- read_odt(raw("Local Tax/Property_Tax_Rates/2025-sd-rates.xlsx"),
-                     sheet = "School2025", header_token = "Home County Name") |>
-  select(irn = 4, class1_rate = 7, floor_c1 = 29) |>
-  mutate(irn = as.character(irn),
-         class1_rate = suppressWarnings(as.numeric(class1_rate)),
-         floor_c1    = suppressWarnings(as.numeric(floor_c1)),
-         at_floor    = !is.na(floor_c1) & abs(floor_c1 - 20) <= 0.01)
+#| fig-cap: "Estimated school-district net property-tax millage (area-weighted from municipal net tax rate), latest year in the Wisconsin TVC Tableau extract."
+norm_code <- function(x) stringr::str_pad(stringr::str_extract(as.character(x), "[0-9]+"), width = 5, side = "left", pad = "0")
 
-n_sd_rated <- sum(!is.na(sd_rates$floor_c1))
-n_sd_floor <- sum(sd_rates$at_floor, na.rm = TRUE)
+tvc_root_candidates <- c(
+  here("data/raw/tvc_taxes"),
+  here("scripts/data/raw/tvc_taxes")
+)
+tvc_files <- map(tvc_root_candidates, ~ list.files(.x, pattern = "\\.parquet$", recursive = TRUE, full.names = TRUE)) |>
+  unlist() |>
+  unique()
 
-sd_rate_map <- oh_sd_l |>
-  left_join(xwalk, by = c("GEOID" = "geoid")) |>
-  left_join(sd_rates, by = "irn")
+tvc_tables <- purrr::map(tvc_files, ~ tryCatch(arrow::read_parquet(.x), error = function(e) NULL)) |>
+  purrr::compact()
+tvc_rates_long <- purrr::keep(
+  tvc_tables,
+  ~ all(c("YEAR", "Auth. Code", "Muni Name", "Pivot Field Names", "Pivot Field Values") %in% names(.x))
+) |>
+  bind_rows() |>
+  filter(`Pivot Field Names` == "Net Tax Rate (mills)") |>
+  mutate(
+    year = suppressWarnings(as.integer(format(as.Date(YEAR), "%Y"))),
+    auth_code = norm_code(`Auth. Code`),
+    net_rate_mills = suppressWarnings(as.numeric(`Pivot Field Values`))
+  ) |>
+  filter(!is.na(year), !is.na(net_rate_mills), !is.na(auth_code))
+
+if (nrow(tvc_rates_long) == 0) {
+  stop("No 'Net Tax Rate (mills)' rows found in TVC parquet inputs.")
+}
+
+latest_rate_year <- max(tvc_rates_long$year, na.rm = TRUE)
+muni_rates_latest <- tvc_rates_long |>
+  filter(year == latest_rate_year) |>
+  group_by(auth_code) |>
+  summarise(net_rate_mills = mean(net_rate_mills, na.rm = TRUE), .groups = "drop")
+
+wi_muni_rates <- wi_shp |>
+  st_make_valid() |>
+  mutate(auth_code = norm_code(DOR)) |>
+  left_join(muni_rates_latest, by = "auth_code") |>
+  filter(!is.na(net_rate_mills))
+
+if (nrow(wi_muni_rates) == 0) {
+  stop("No municipal polygons matched to TVC net tax-rate records.")
+}
+
+wi_sd_for_map <- wi_sd_l |>
+  st_make_valid() |>
+  select(SDID, DISTRICT, geometry)
+
+sd_intersections <- suppressWarnings(
+  st_intersection(
+    wi_sd_for_map,
+    wi_muni_rates |> select(net_rate_mills, geometry)
+  )
+)
+
+sd_rates <- sd_intersections |>
+  mutate(piece_area = as.numeric(st_area(geometry))) |>
+  st_drop_geometry() |>
+  group_by(SDID, DISTRICT) |>
+  summarise(
+    net_rate_mills = weighted.mean(net_rate_mills, piece_area, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+sd_rate_map <- wi_sd_for_map |>
+  left_join(sd_rates, by = c("SDID", "DISTRICT"))
+
+n_sd_rated <- sum(!is.na(sd_rate_map$net_rate_mills))
+n_sd_total <- nrow(sd_rate_map)
 
 p_fig8 <- ggplot(sd_rate_map) +
-  geom_sf(aes(fill = class1_rate), color = "white", linewidth = 0.05) +
-  geom_sf(data = filter(sd_rate_map, at_floor),
-          aes(color = "At the 20-mill floor"), fill = NA, linewidth = 0.35) +
-  geom_sf(data = oh_land, fill = NA, color = "grey30", linewidth = 0.3) +
-  scale_fill_swank_seq(name = "Class I effective mills", labels = label_number(accuracy = 1)) +
-  scale_color_manual(values = c("At the 20-mill floor" = "#c0392b"), name = NULL) +
-  guides(color = guide_legend(override.aes = list(fill = NA, linewidth = 0.8))) +
-  labs(title = "Residential school property-tax rates vary widely across districts",
-       subtitle = "Class I (residential/agricultural) effective millage by school district (TY2025)",
-       caption = paste0("Source: ODT 2025 SD rates (2025-sd-rates.xlsx) + validated IRN-GEOID crosswalk + TIGER SD shapefile.\n",
-                        "Floor status from the Class I 20-mill Floor Rate column; outlines match the interactive authority map.")) +
+  geom_sf(aes(fill = net_rate_mills), color = "white", linewidth = 0.05) +
+  geom_sf(data = wi_land, fill = NA, color = "grey30", linewidth = 0.3) +
+  scale_fill_swank_seq(name = "Net rate (mills)", labels = label_number(accuracy = 0.1)) +
+  labs(
+    title = "School-district property-tax millage varies across Wisconsin",
+    subtitle = paste0("Area-weighted municipal net tax rate by district (", latest_rate_year, ")"),
+    caption = paste0(
+      "Source: Wisconsin TVC Tableau workbook (TownVillageandCityTaxes.twb), municipal boundaries (CTV), and Wisconsin school-district shapefile.\n",
+      "School-district millage is estimated as an area-weighted mean of municipal Net Tax Rate (mills) where municipal and district polygons overlap."
+    )
+  ) +
   theme_swank_map()
 p_fig8
 ggsave(file.path(fig_dir, "fig08_school_district_class1_rate_2025.png"),
        p_fig8, width = 8, height = 7, dpi = 300, bg = "white")
 ```
 
-Districts at the HB 920 **20-mill floor** are the map's second story, and the bigger one: `r n_sd_floor` of the `r n_sd_rated` rated districts (`r scales::percent(n_sd_floor / n_sd_rated, accuracy = 1)`) sit at the floor — outlined in red above, matching the interactive authority map's convention. A floor district's Class I current-expense millage cannot be reduced further by HB 920 reduction factors, so its revenue *does* grow with reassessment, unlike districts above the floor, whose effective rate falls as values rise. Floor and non-floor districts would therefore lose very different amounts under any statewide replacement — the entry point to the Layer-3 school-finance analysis.
+Using the latest TVC extract year, `r n_sd_rated` of `r n_sd_total` Wisconsin school districts have an estimated mapped millage value. This gives a district-level rate surface for comparison across places, while remaining transparent about the aggregation step from municipality-level rates to school-district boundaries.
 
-> **Note (mostly resolved).** The IRN→GEOID match is now the *validated* crosswalk (`1i-sd-geoid-crosswalk.py`): 606 of 614 ODT districts attach a rate, up from the 18 left grey under the raw join. The residual \~5 grey districts are same-named districts (e.g. Lakota/Madison/Perry/Green Local) whose county tie-break didn't land, plus defunct/merged IRNs — all listed in `05_output/audit/sd_geoid_unmatched.csv`. **Alex:** if we publish this map, hand-resolve those last few GEOIDs and note any taxable value they represent.
+> **Note.** This figure uses an area-weighted overlay because the current TVC extract reports tax rates at municipal geography, not directly by school district code. If a district-specific Wisconsin school-rate source becomes available, replace this with a direct district join.
 
 # (iii) What does each level collect?
 

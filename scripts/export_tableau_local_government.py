@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Download and export all tables from the Wisconsin Local Government Tableau workbook.
+"""Download and export all tables from the Wisconsin TVC Tableau workbook.
 
 This script:
 1) Downloads the Tableau workbook package from Tableau Public
@@ -21,13 +21,7 @@ import pandas as pd
 import requests
 from tableauhyperapi import Connection, CreateMode, HyperProcess, Telemetry
 
-DEFAULT_WORKBOOK_URL = (
-    "https://public.tableau.com/workbooks/LocalGovernmentDashboard_0.twb"
-)
-
-DEFAULT_WORKBOOK_URL_tax_rates = (
-    "https://public.tableau.com/workbooks/LocalGovernmentDashboard_0.twb"
-)
+DEFAULT_WORKBOOK_URL = "https://public.tableau.com/workbooks/TownVillageandCityTaxes.twb"
 
 def safe_name(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", text).strip("_")
@@ -115,7 +109,7 @@ def export_hyper_tables(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Export all tables from the Wisconsin Local Government Tableau workbook."
+        description="Export all tables from the Wisconsin TVC Tableau workbook."
     )
     parser.add_argument(
         "--workbook-url",
@@ -138,10 +132,7 @@ def main() -> None:
     base_dir = Path(args.base_dir).resolve()
     source_dir = base_dir / "sources"
     unpack_dir = source_dir / "workbook_unpacked"
-    raw_dir = base_dir / "data" / "raw"
-    raw_dir =  base_dir / "data" / "raw" / "tvc_taxes"
-
-    # workbook_path = source_dir / "LocalGovernmentDashboard_0.twb"
+    raw_dir = base_dir / "data" / "raw" / "tvc_taxes"
     workbook_path = source_dir / "TownVillageandCityTaxes.twb"
 
     print(f"Downloading workbook: {args.workbook_url}")
@@ -168,9 +159,7 @@ if __name__ == "__main__":
     main()
 
 
-
-# What I still need
-# Tax rates
-# School district data
-# State level data
-# shape files for municipalities, townships, villages, and counties
+# Remaining data pulls:
+# 1) School district financing data from a public Tableau source, including
+#    property tax amounts and millage by district/year.
+# 2) State-level revenues and expenditures for Wisconsin.
