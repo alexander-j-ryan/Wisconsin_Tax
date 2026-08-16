@@ -25,6 +25,9 @@ DEFAULT_WORKBOOK_URL = (
     "https://public.tableau.com/workbooks/LocalGovernmentDashboard_0.twb"
 )
 
+DEFAULT_WORKBOOK_URL_tax_rates = (
+    "https://public.tableau.com/workbooks/LocalGovernmentDashboard_0.twb"
+)
 
 def safe_name(text: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", text).strip("_")
@@ -136,8 +139,10 @@ def main() -> None:
     source_dir = base_dir / "sources"
     unpack_dir = source_dir / "workbook_unpacked"
     raw_dir = base_dir / "data" / "raw"
+    raw_dir =  base_dir / "data" / "raw" / "tvc_taxes"
 
-    workbook_path = source_dir / "LocalGovernmentDashboard_0.twb"
+    # workbook_path = source_dir / "LocalGovernmentDashboard_0.twb"
+    workbook_path = source_dir / "TownVillageandCityTaxes.twb"
 
     print(f"Downloading workbook: {args.workbook_url}")
     download_workbook(args.workbook_url, workbook_path)
@@ -161,3 +166,11 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+# What I still need
+# Tax rates
+# School district data
+# State level data
+# shape files for municipalities, townships, villages, and counties
