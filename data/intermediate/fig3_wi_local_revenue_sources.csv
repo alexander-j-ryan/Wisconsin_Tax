@@ -1,0 +1,7 @@
+level,tax_type,value,vintage,source,value_usd,unit_note
+Local,K-12 School Tax,6102036507.29,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,6102036507.29,USD
+Local,Municipal Tax,3623141716.07,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,3623141716.07,USD
+Local,County Tax,2558011633.79,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,2558011633.79,USD
+Local,TID Tax,700950859.28,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,700950859.28,USD
+Local,Technical College Tax,515998304.0,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,515998304.0,USD
+Local,Special Districts Tax,137970930.57,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,137970930.57,USD

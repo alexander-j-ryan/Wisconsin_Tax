@@ -1,0 +1,6 @@
+local_tax_type,state_local_tax_type,local_from_parquet,state_local_workbook,diff,state_local_workbook_usd,diff_usd,pct_diff
+K-12 School Tax,Gross Levy - School Districts,6102036507.29,6102.0,6102030405.29,6102000000.0,36507.28999996185,5.982840052435571e-06
+Municipal Tax,Gross Levy - Municipalities,3623141716.07,3662.3,3623138053.77,3662300000.0,-39158283.92999983,-0.010692265497091945
+County Tax,Gross Levy - Counties,2558011633.79,2558.0,2558009075.79,2558000000.0,11633.789999961853,4.548002345567574e-06
+Technical College Tax,Gross Levy - Vocational College Districts,515998304.0,516.0,515997788.0,516000000.0,-1696.0,-3.2868217054263565e-06
+Special Districts Tax,Gross Levy - Other Jurisdictions (Exlcuding State Forestry),137970930.57,838.9,137970091.67,838900000.0,-700929069.4300001,-0.8355335194063656

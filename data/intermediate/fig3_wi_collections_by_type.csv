@@ -1,0 +1,29 @@
+level,tax_type,value,vintage,source,value_usd,unit_note
+Local,K-12 School Tax,6102036507.29,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,6102036507.29,USD
+Local,Municipal Tax,3623141716.07,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,3623141716.07,USD
+Local,County Tax,2558011633.79,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,2558011633.79,USD
+Local,TID Tax,700950859.28,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,700950859.28,USD
+Local,Technical College Tax,515998304.0,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,515998304.0,USD
+Local,Special Districts Tax,137970930.57,CY2024,TVC Tableau (TownVillageandCityTaxes) via parquet,137970930.57,USD
+State,Individual Income,10451.1,FY2025,WIStateandLocalTaxes Tableau workbook,10451100000.0,Millions of USD (converted to USD)
+State,State Sales And Use,7831.6,FY2025,WIStateandLocalTaxes Tableau workbook,7831600000.0,Millions of USD (converted to USD)
+State,Corporate Income And Franchise,2761.7,FY2025,WIStateandLocalTaxes Tableau workbook,2761700000.0,Millions of USD (converted to USD)
+State,Motor Fuels Tax,1115.2,FY2025,WIStateandLocalTaxes Tableau workbook,1115200000.0,Millions of USD (converted to USD)
+State,Utility,387.5,FY2025,WIStateandLocalTaxes Tableau workbook,387500000.0,Millions of USD (converted to USD)
+State,Cigarette,369.6,FY2025,WIStateandLocalTaxes Tableau workbook,369600000.0,Millions of USD (converted to USD)
+State,Insurance,268.8,FY2025,WIStateandLocalTaxes Tableau workbook,268800000.0,Millions of USD (converted to USD)
+State,Real Estate Transfer Fee,105.5,FY2025,WIStateandLocalTaxes Tableau workbook,105500000.0,Millions of USD (converted to USD)
+State,Other /Remaining Segregated Fund Taxes,83.9,FY2025,WIStateandLocalTaxes Tableau workbook,83900000.0,Millions of USD (converted to USD)
+State,Tobacco Products,83.0,FY2025,WIStateandLocalTaxes Tableau workbook,83000000.0,Millions of USD (converted to USD)
+State,Liquor And Wine,72.9,FY2025,WIStateandLocalTaxes Tableau workbook,72900000.0,Millions of USD (converted to USD)
+State,Fire Dues,36.9,FY2025,WIStateandLocalTaxes Tableau workbook,36900000.0,Millions of USD (converted to USD)
+State,Transportation Fund Taxes (Other Than Motor Fuel),36.1,FY2025,WIStateandLocalTaxes Tableau workbook,36100000.0,Millions of USD (converted to USD)
+State,Lawsuits,14.6,FY2025,WIStateandLocalTaxes Tableau workbook,14600000.0,Millions of USD (converted to USD)
+State,Beer,8.4,FY2025,WIStateandLocalTaxes Tableau workbook,8400000.0,Millions of USD (converted to USD)
+State,Vapor Products,8.1,FY2025,WIStateandLocalTaxes Tableau workbook,8100000.0,Millions of USD (converted to USD)
+State,County Sales Administrative Fee,6.4,FY2025,WIStateandLocalTaxes Tableau workbook,6400000.0,Millions of USD (converted to USD)
+State,Business Trust Regulation Fee,3.0,FY2025,WIStateandLocalTaxes Tableau workbook,3000000.0,Millions of USD (converted to USD)
+State,Local Expo Administrative Fee,1.3,FY2025,WIStateandLocalTaxes Tableau workbook,1300000.0,Millions of USD (converted to USD)
+State,Other Program Tax Revenues,0.6,FY2025,WIStateandLocalTaxes Tableau workbook,600000.0,Millions of USD (converted to USD)
+State,Premier Resort Administrative Fee,0.4,FY2025,WIStateandLocalTaxes Tableau workbook,400000.0,Millions of USD (converted to USD)
+State,Other,0.1,FY2025,WIStateandLocalTaxes Tableau workbook,100000.0,Millions of USD (converted to USD)

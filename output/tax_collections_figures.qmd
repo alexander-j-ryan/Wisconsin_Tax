@@ -50,23 +50,23 @@ library(arrow)
 library(leaflet)
 library(here)
 
-# source(here("02_code/functions/theme_swank.R"))     # theme_swank(), swank_palette
+source(here("scripts/functions/theme_swank.R"))     # theme_swank(), swank_palette
 # source(here("02_code/functions/read_odt.R"))         # read_odt(), keep_oh_counties()
-# source(here("02_code/functions/viz_helpers.R"))      # theme_swank_map(), maps, scales
-# source(here("02_code/functions/incidence.R"))        # property_tax_incidence(), wtd_quantile_bins()
+source(here("scripts/functions/viz_helpers.R"))      # theme_swank_map(), maps, scales
+source(here("scripts/functions/incidence.R"))        # property_tax_incidence(), wtd_quantile_bins()
 
 fig_dir <- here("output/figures")
 
 # Geographies, reprojected to EPSG:3735 (area-correct Ohio). County cb file is
 # shoreline-clipped, so Lake Erie is not a polygon.
-wi_shp  <- st_read("C:/Users/aryan/OneDrive - American Bankers Association/Documents/GitHub/Wisconsin_Tax/data/shapefiles/CTV_Jan_2026_-4910906020273727621/CTV_Jan_2026.shp")
+wi_shp  <- st_read("C:/Users/aryan/Documents/GitHub/Wisconsin_Tax/data/shapefiles/CTV_Jan_2026_-4910906020273727621/CTV_Jan_2026.shp")
 
 wi_city <- wi_shp %>% filter(CTV == "C") %>% st_transform(3735)
 wi_village <- wi_shp %>% filter(CTV == "V") %>% st_transform(3735)
 wi_township <- wi_shp %>% filter(CTV == "T") %>% st_transform(3735)
-wi_county <- st_read("C:/Users/aryan/OneDrive - American Bankers Association/Documents/GitHub/Wisconsin_Tax/data/shapefiles/cb_2018_us_county_500k/cb_2018_us_county_500k.shp") %>% filter(STATEFP == 55) %>% st_transform(3735)
+wi_county <- st_read("C:/Users/aryan/Documents/GitHub/Wisconsin_Tax/data/shapefiles/cb_2018_us_county_500k/cb_2018_us_county_500k.shp") %>% filter(STATEFP == 55) %>% st_transform(3735)
 
-wi_sd        <- st_read("C:/Users/aryan/OneDrive - American Bankers Association/Documents/GitHub/Wisconsin_Tax/data/shapefiles/Wisconsin_School_Districts_-5132457395192808409/WI_School_Districts.shp") |> st_transform(3735)
+wi_sd        <- st_read("C:/Users/aryan/Documents/GitHub/Wisconsin_Tax/data/shapefiles/Wisconsin_School_Districts_-5132457395192808409/WI_School_Districts.shp") |> st_transform(3735)
 
 # Wisconsin land polygon (counties are shoreline-clipped, so their union excludes Lake
 # Erie). Clip the other jurisdiction layers to it so the lake doesn't render.
@@ -78,16 +78,6 @@ wi_sd_l        <- clip_to_land(wi_sd, wi_land)
 n_cities <- nrow(wi_city); n_twp <- nrow(wi_township); n_sd <- nrow(wi_sd)
 n_villages <- nrow(wi_village)
 
-# School-district IRN -> TIGER GEOID crosswalk (used by the SD maps). This is the
-# VALIDATED crosswalk from 1i-sd-geoid-crosswalk.py: it keeps a raw NCES id only
-# when it is a real Ohio TIGER GEOID (a handful of raw rows carry out-of-state
-# placeholder ids), then falls back to a name+county match. 606/614 ODT districts
-# resolve (vs 18 unmatched under the raw join); the residual ~5 are same-named
-# districts logged in 05_output/audit/sd_geoid_unmatched.csv.
-xwalk <- readr::read_csv(here("04_data-clean/crosswalks/ohio_irn_to_tiger_geoid.csv"),
-                         show_col_types = FALSE) |>
-  transmute(irn = as.character(irn), geoid = as.character(geoid)) |>
-  filter(!is.na(geoid))
 ```
 
 This document builds the descriptive baseline that the replacement-scenario model (`02_code/scenarios/`, Part II) perturbs when estimating the consequences of abolishing Ohio's **real property tax**. We organize it around four questions — *who* taxes, *what* they may levy, *what* they collect, and *what* they spend — then turn to how the ACS/PUMS household data converts those fiscal totals into a household-incidence baseline, for both the property tax and the income tax. The recurring finding: property tax is a **local, school-centred, real-property** instrument distributed unevenly across Ohio, so a statewide replacement is never a clean swap.
@@ -97,27 +87,27 @@ This document builds the descriptive baseline that the replacement-scenario mode
 Ohio property tax is levied not by one government but by a stack of overlapping ones — counties, municipalities (cities and villages), townships, and school districts, plus special districts (libraries, parks, transit). A single parcel typically pays into several at once. That overlap is why "abolish the property tax" is hundreds of simultaneous fiscal events, not one.
 
 ```{r}
-#| label: fig-jurisdictions
-#| fig-cap: "Ohio's four overlapping kinds of property-taxing authority (Lake Erie removed)."
-#| fig-width: 10
-#| fig-height: 8
-base_map <- function(layer, title)
-  ggplot() +
-    geom_sf(data = layer, fill = swank_palette[1], color = "white", linewidth = 0.08, alpha = 0.85) +
-    geom_sf(data = wi_land, fill = NA, color = "grey30", linewidth = 0.3) +
-    labs(title = title) + theme_swank_map(base_size = 11)
+# #| label: fig-jurisdictions
+# #| fig-cap: "Ohio's four overlapping kinds of property-taxing authority (Lake Erie removed)."
+# #| fig-width: 10
+# #| fig-height: 8
+# base_map <- function(layer, title)
+#   ggplot() +
+#     geom_sf(data = layer, fill = swank_palette[1], color = "white", linewidth = 0.08, alpha = 0.85) +
+#     geom_sf(data = wi_land, fill = NA, color = "grey30", linewidth = 0.3) +
+#     labs(title = title) + theme_swank_map(base_size = 11)
 
-p_jur <- (base_map(wi_county, "Counties") | base_map(wi_cities_l, paste(n_cities, "Municipalities"))) /
-         base_map(wi_villages_l, paste(n_villages, "Villages")) | (base_map(wi_townships_l, paste(n_twp, "Townships")) | base_map(wi_sd_l, paste(n_sd, "School districts"))) +
-  plot_annotation(
-    title = "Four overlapping kinds of taxing authority levy Ohio's property tax",
-    subtitle = "Each parcel sits inside a county, a municipality or township, and a school district at once",
-    caption = "Source: Census TIGER (counties, school districts) + ODOT/OGRIP (Ohio_City_Boundaries.shp, Ohio_Township_Boundaries.shp).",
-    theme = theme(plot.title = element_text(face = "bold", size = 15))
-  )
-p_jur
-ggsave(file.path(fig_dir, "fig04_jurisdictions_small_multiples.png"),
-       p_jur, width = 10, height = 8, dpi = 300, bg = "white")
+# p_jur <- (base_map(wi_county, "Counties") | base_map(wi_cities_l, paste(n_cities, "Municipalities"))) /
+#          base_map(wi_villages_l, paste(n_villages, "Villages")) | (base_map(wi_townships_l, paste(n_twp, "Townships")) | base_map(wi_sd_l, paste(n_sd, "School districts"))) +
+#   plot_annotation(
+#     title = "Four overlapping kinds of taxing authority levy Ohio's property tax",
+#     subtitle = "Each parcel sits inside a county, a municipality or township, and a school district at once",
+#     caption = "Source: Census TIGER (counties, school districts) + ODOT/OGRIP (Ohio_City_Boundaries.shp, Ohio_Township_Boundaries.shp).",
+#     theme = theme(plot.title = element_text(face = "bold", size = 15))
+#   )
+# p_jur
+# ggsave(file.path(fig_dir, "fig04_jurisdictions_small_multiples.png"),
+#        p_jur, width = 10, height = 8, dpi = 300, bg = "white")
 ```
 
 School districts and townships tile the whole state; municipalities are islands of denser settlement. The model carries all four levels because replacement revenue routed to one level does not automatically reach the level that lost it — the heart of the Layer-2 redistribution problem.
@@ -127,24 +117,24 @@ School districts and townships tile the whole state; municipalities are islands 
 Not every government can levy every tax. This is the single most useful fact for reasoning about replacement: when the property tax disappears, only certain levels have other instruments to fall back on, and the property tax is the *only* broad tax a township or special district has at all.
 
 ```{r}
-#| label: prep-sd-income-count
-# Hoisted here (ahead of the section-iii map that otherwise builds it first)
-# so the "how many districts levy a school income tax" figure quoted in
-# this section and in the open item further below is a live count, not a
-# hand-typed one -- same construction the fig-sd-income chunk in section
-# iii uses (ODT Table SD-2, FY2026 Q4); that chunk reuses this object
-# rather than re-deriving it.
-sd2_m <- read_excel(raw("Local Tax/School_Income_Tax/sd2q4fy26.xlsx"),
-                    sheet = "SD2Q4_FY26", col_names = FALSE)
-sd_income <- tibble(
-  irn = as.character(sd2_m[[4]]),                              # col 4 = IRN
-  q1 = suppressWarnings(as.numeric(sd2_m[[9]])),  q2 = suppressWarnings(as.numeric(sd2_m[[10]])),
-  q3 = suppressWarnings(as.numeric(sd2_m[[11]])), q4 = suppressWarnings(as.numeric(sd2_m[[12]]))  # cols 9-12 = quarters
-) |>
-  filter(!is.na(suppressWarnings(as.numeric(irn)))) |>
-  mutate(sd_income = rowSums(across(c(q1, q2, q3, q4)), na.rm = TRUE)) |>
-  select(irn, sd_income)
-n_sd_income_positive <- sum(sd_income$sd_income > 0)
+# #| label: prep-sd-income-count
+# # Hoisted here (ahead of the section-iii map that otherwise builds it first)
+# # so the "how many districts levy a school income tax" figure quoted in
+# # this section and in the open item further below is a live count, not a
+# # hand-typed one -- same construction the fig-sd-income chunk in section
+# # iii uses (ODT Table SD-2, FY2026 Q4); that chunk reuses this object
+# # rather than re-deriving it.
+# sd2_m <- read_excel(raw("Local Tax/School_Income_Tax/sd2q4fy26.xlsx"),
+#                     sheet = "SD2Q4_FY26", col_names = FALSE)
+# sd_income <- tibble(
+#   irn = as.character(sd2_m[[4]]),                              # col 4 = IRN
+#   q1 = suppressWarnings(as.numeric(sd2_m[[9]])),  q2 = suppressWarnings(as.numeric(sd2_m[[10]])),
+#   q3 = suppressWarnings(as.numeric(sd2_m[[11]])), q4 = suppressWarnings(as.numeric(sd2_m[[12]]))  # cols 9-12 = quarters
+# ) |>
+#   filter(!is.na(suppressWarnings(as.numeric(irn)))) |>
+#   mutate(sd_income = rowSums(across(c(q1, q2, q3, q4)), na.rm = TRUE)) |>
+#   select(irn, sd_income)
+# n_sd_income_positive <- sum(sd_income$sd_income > 0)
 ```
 
 | Authority | Property tax | Sales / use tax | Income tax | Other notable |
@@ -166,94 +156,50 @@ n_sd_income_positive <- sum(sd_income$sd_income > 0)
 
 **Notes.** ^†^ *Selective excises* are narrow taxes on specific goods (cigarette, alcohol, motor fuel, etc.) — distinct from the broad **sales / use tax** on general retail, which is the only thing meant by "sales tax" in this column. ^‡^ *Permissive* sales tax: a **county** may levy up to **1.5%**, and a transit authority additional increments; combined local rates reach \~2.25%. ^§^ Townships have **no income-tax authority of their own**. They can share in an income tax only through a **JEDD** (Joint Economic Development District) — a contract with a municipality that imposes the *municipality's* income tax inside a defined zone. **SD** = school district. The **state income tax** is a flat 2.75%, but only on Ohio taxable income **above ≈ \$26,050** — income at or below that threshold owes no state income tax (so the first \~\$26k of taxable income is effectively exempt).
 
-Three things to read off @tbl-authority. First, **townships and special districts have only the property tax** — abolition leaves them with no broad local instrument at all. Second, **counties can reach a sales tax but not an income tax**; municipalities the reverse. Third, **schools have two tools** — property tax and a voted income tax — but rely overwhelmingly on the first (section iii). About `r n_sd_income_positive` (FY2026 SD-2) school districts and 600+ municipalities levy income taxes.
 
 The *rates* themselves vary enormously across space. The map below summarizes school-district property-tax millage using the Wisconsin TVC Tableau extract and the Wisconsin school-district boundaries.
 
 ```{r}
 #| label: fig-sd-rate
-#| fig-cap: "Estimated school-district net property-tax millage (area-weighted from municipal net tax rate), latest year in the Wisconsin TVC Tableau extract."
-norm_code <- function(x) stringr::str_pad(stringr::str_extract(as.character(x), "[0-9]+"), width = 5, side = "left", pad = "0")
-
-tvc_root_candidates <- c(
-  here("data/raw/tvc_taxes"),
-  here("scripts/data/raw/tvc_taxes")
+#| fig-cap: "School-district property-tax millage (Mill Rate) from the Wisconsin School District Income and Property Tax Tableau extract, latest available IPAS year."
+sd_rate_file_candidates <- c(
+  here("data/raw/sd_taxes/school_district_mill_rate_latest.csv"),
+  here("scripts/data/raw/sd_taxes/school_district_mill_rate_latest.csv")
 )
-tvc_files <- map(tvc_root_candidates, ~ list.files(.x, pattern = "\\.parquet$", recursive = TRUE, full.names = TRUE)) |>
-  unlist() |>
-  unique()
+sd_rate_file <- sd_rate_file_candidates[file.exists(sd_rate_file_candidates)][1]
+if (is.na(sd_rate_file)) {
+  stop("Missing school_district_mill_rate_latest.csv. Run the Tableau extract pull first.")
+}
 
-tvc_tables <- purrr::map(tvc_files, ~ tryCatch(arrow::read_parquet(.x), error = function(e) NULL)) |>
-  purrr::compact()
-tvc_rates_long <- purrr::keep(
-  tvc_tables,
-  ~ all(c("YEAR", "Auth. Code", "Muni Name", "Pivot Field Names", "Pivot Field Values") %in% names(.x))
-) |>
-  bind_rows() |>
-  filter(`Pivot Field Names` == "Net Tax Rate (mills)") |>
-  mutate(
-    year = suppressWarnings(as.integer(format(as.Date(YEAR), "%Y"))),
-    auth_code = norm_code(`Auth. Code`),
-    net_rate_mills = suppressWarnings(as.numeric(`Pivot Field Values`))
+sd_rates <- readr::read_csv(sd_rate_file, show_col_types = FALSE) |>
+  transmute(
+    SDID = stringr::str_pad(as.character(district_number), width = 4, side = "left", pad = "0"),
+    district_name = as.character(district_name),
+    ipas_year = suppressWarnings(as.integer(ipas_year)),
+    mill_rate = suppressWarnings(as.numeric(mill_rate))
   ) |>
-  filter(!is.na(year), !is.na(net_rate_mills), !is.na(auth_code))
+  filter(!is.na(SDID), !is.na(mill_rate))
 
-if (nrow(tvc_rates_long) == 0) {
-  stop("No 'Net Tax Rate (mills)' rows found in TVC parquet inputs.")
-}
+latest_rate_year <- max(sd_rates$ipas_year, na.rm = TRUE)
 
-latest_rate_year <- max(tvc_rates_long$year, na.rm = TRUE)
-muni_rates_latest <- tvc_rates_long |>
-  filter(year == latest_rate_year) |>
-  group_by(auth_code) |>
-  summarise(net_rate_mills = mean(net_rate_mills, na.rm = TRUE), .groups = "drop")
-
-wi_muni_rates <- wi_shp |>
+sd_rate_map <- wi_sd_l |>
   st_make_valid() |>
-  mutate(auth_code = norm_code(DOR)) |>
-  left_join(muni_rates_latest, by = "auth_code") |>
-  filter(!is.na(net_rate_mills))
+  select(SDID, DISTRICT, geometry) |>
+  left_join(sd_rates, by = "SDID")
 
-if (nrow(wi_muni_rates) == 0) {
-  stop("No municipal polygons matched to TVC net tax-rate records.")
-}
-
-wi_sd_for_map <- wi_sd_l |>
-  st_make_valid() |>
-  select(SDID, DISTRICT, geometry)
-
-sd_intersections <- suppressWarnings(
-  st_intersection(
-    wi_sd_for_map,
-    wi_muni_rates |> select(net_rate_mills, geometry)
-  )
-)
-
-sd_rates <- sd_intersections |>
-  mutate(piece_area = as.numeric(st_area(geometry))) |>
-  st_drop_geometry() |>
-  group_by(SDID, DISTRICT) |>
-  summarise(
-    net_rate_mills = weighted.mean(net_rate_mills, piece_area, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-sd_rate_map <- wi_sd_for_map |>
-  left_join(sd_rates, by = c("SDID", "DISTRICT"))
-
-n_sd_rated <- sum(!is.na(sd_rate_map$net_rate_mills))
+n_sd_rated <- sum(!is.na(sd_rate_map$mill_rate))
 n_sd_total <- nrow(sd_rate_map)
 
 p_fig8 <- ggplot(sd_rate_map) +
-  geom_sf(aes(fill = net_rate_mills), color = "white", linewidth = 0.05) +
+  geom_sf(aes(fill = mill_rate), color = "white", linewidth = 0.05) +
   geom_sf(data = wi_land, fill = NA, color = "grey30", linewidth = 0.3) +
-  scale_fill_swank_seq(name = "Net rate (mills)", labels = label_number(accuracy = 0.1)) +
+  scale_fill_swank_seq(name = "Mill rate (mills)", labels = label_number(accuracy = 0.1)) +
   labs(
     title = "School-district property-tax millage varies across Wisconsin",
-    subtitle = paste0("Area-weighted municipal net tax rate by district (", latest_rate_year, ")"),
+    subtitle = paste0("Direct district-level Mill Rate from School District Income and Property Tax Tableau extract (IPAS ", latest_rate_year, ")"),
     caption = paste0(
-      "Source: Wisconsin TVC Tableau workbook (TownVillageandCityTaxes.twb), municipal boundaries (CTV), and Wisconsin school-district shapefile.\n",
-      "School-district millage is estimated as an area-weighted mean of municipal Net Tax Rate (mills) where municipal and district polygons overlap."
+      "Source: Wisconsin School District Income and Property Tax Tableau workbook + Wisconsin school-district shapefile.\n",
+      "Mapped directly by district code (District Number -> SDID), no municipal-weighted overlay."
     )
   ) +
   theme_swank_map()
@@ -262,9 +208,9 @@ ggsave(file.path(fig_dir, "fig08_school_district_class1_rate_2025.png"),
        p_fig8, width = 8, height = 7, dpi = 300, bg = "white")
 ```
 
-Using the latest TVC extract year, `r n_sd_rated` of `r n_sd_total` Wisconsin school districts have an estimated mapped millage value. This gives a district-level rate surface for comparison across places, while remaining transparent about the aggregation step from municipality-level rates to school-district boundaries.
+Using the latest available IPAS year, `r n_sd_rated` of `r n_sd_total` Wisconsin school districts have a directly mapped district-level mill-rate value.
 
-> **Note.** This figure uses an area-weighted overlay because the current TVC extract reports tax rates at municipal geography, not directly by school district code. If a district-specific Wisconsin school-rate source becomes available, replace this with a direct district join.
+> **Note.** This version maps district-level values directly from the school-district Tableau extract (no area-weighted municipal interpolation).
 
 # (iii) What does each level collect?
 
@@ -272,45 +218,58 @@ Using the latest TVC extract year, `r n_sd_rated` of `r n_sd_total` Wisconsin sc
 
 ```{r}
 #| label: fig-collections-stacked
-#| fig-cap: "Ohio state and local tax collections by type, stacked by level (mixed vintages)."
-collections <- readr::read_csv(
-  here("04_data-clean/intermediate/collections_by_type.csv"), show_col_types = FALSE
+#| fig-cap: "Wisconsin state and local tax collections by type, stacked by level (mixed vintages: local CY2024 from TVC Tableau; state FY2025 from WI State and Local Taxes Tableau)."
+collections_wi <- readr::read_csv(
+  here("data/intermediate/fig3_wi_collections_by_type.csv"), show_col_types = FALSE
 ) |>
-  mutate(collections_b = collections_usd / 1e9)
+  mutate(collections_b = value_usd / 1e9,
+         level = factor(level, levels = c("Local", "State")))
 
-# Real property and public-utility tangible property totals, read once here
-# and inlined everywhere this document quotes them (never hand-typed).
-real_prop_b <- collections$collections_b[collections$tax_type == "Property tax (real, net charged)"]
-put_b       <- collections$collections_b[collections$tax_type == "Public utility tangible property tax"]
-
-tax_cols <- c(
-  "Property tax (real, net charged)"      = "#1F3864",
-  "Public utility tangible property tax"  = "#8496B0",  # distinct instrument, kept visually adjacent
-  "Municipal income tax"         = "#2E7D32",
-  "Sales tax (county & transit)" = "#9CC3E5",
-  "School district income tax"   = "#A9D18E",
-  # "Public library fund"          = "#BFBFBF",
-  "Sales & use tax"              = "#5B9BD5",
-  "Individual income tax"        = "#70AD47",
-  "Commercial Activity Tax"      = "#ED7D31",
-  "Motor fuel tax"               = "#A6611A",
-  "Other taxes (smaller)"  = "#7F7F7F"
+tax_cols_wi <- c(
+  "K-12 School Tax" = "#1F3864",
+  "Municipal Tax" = "#2E7D32",
+  "County Tax" = "#5B9BD5",
+  "Technical College Tax" = "#70AD47",
+  "Special Districts Tax" = "#A9D18E",
+  "TID Tax" = "#7F7F7F",
+  "Individual Income" = "#2F5597",
+  "State Sales And Use" = "#ED7D31",
+  "Corporate Income And Franchise" = "#9E480E",
+  "Motor Fuels Tax" = "#A6611A",
+  "Utility" = "#8064A2",
+  "Cigarette" = "#C0504D",
+  "Insurance" = "#4BACC6",
+  "Real Estate Transfer Fee" = "#4F6228",
+  "Tobacco Products" = "#B5651D",
+  "Liquor And Wine" = "#7030A0",
+  "Other /Remaining Segregated Fund Taxes" = "#7F7F7F",
+  "Fire Dues" = "#948A54",
+  "Transportation Fund Taxes (Other Than Motor Fuel)" = "#00B0F0",
+  "Lawsuits" = "#A5A5A5",
+  "Beer" = "#FFC000",
+  "Vapor Products" = "#92D050",
+  "County Sales Administrative Fee" = "#BFBFBF",
+  "Business Trust Regulation Fee" = "#D99694",
+  "Local Expo Administrative Fee" = "#8DB4E2",
+  "Other Program Tax Revenues" = "#DDD9C3",
+  "Premier Resort Administrative Fee" = "#FABF8F",
+  "Other" = "#E6E6E6"
 )
-ord <- collections |> count(tax_type, wt = collections_b, sort = TRUE) |> pull(tax_type)
-stack_df <- collections |> mutate(tax_type = factor(tax_type, levels = rev(ord)))
+ord_wi <- collections_wi |> count(tax_type, wt = collections_b, sort = TRUE) |> pull(tax_type)
+stack_df_wi <- collections_wi |> mutate(tax_type = factor(tax_type, levels = rev(ord_wi)))
 
-p_fig3 <- ggplot(stack_df, aes(level, collections_b, fill = tax_type)) +
+p_fig3 <- ggplot(stack_df_wi, aes(level, collections_b, fill = tax_type)) +
   geom_col(width = 0.6, color = "white", linewidth = 0.4) +
   geom_text(aes(label = ifelse(collections_b >= 2,
           paste0(str_wrap(tax_type, 16), "\n$", formatC(collections_b, 1, format = "f"), "B"), "")),
     position = position_stack(vjust = 0.5), size = 2.6, lineheight = 0.85,
     color = "white", fontface = "bold") +
-  scale_fill_manual(values = tax_cols, breaks = ord, name = NULL) +
+  scale_fill_manual(values = tax_cols_wi, breaks = ord_wi, name = NULL) +
   scale_y_continuous(labels = label_dollar(suffix = "B"), expand = expansion(mult = c(0, 0.05))) +
-  labs(title = "Property tax dominates local revenue; sales & income dominate the state",
-       subtitle = "Ohio state & local tax collections by type (mixed vintages: FY2025 / TY2024 / CY2024 / CY2025 / TY2025)",
+  labs(title = "Wisconsin local tax base is property-tax heavy; state revenue is income and sales-tax heavy",
+       subtitle = "Local from TVC district/municipal/county components (CY2024); State from WI State and Local Taxes dashboard (FY2025)",
        x = NULL, y = "Collections",
-       caption = "Source: ODT Tax Data Series") +
+       caption = "Source: TVC Tableau exports (local) and WIStateandLocalTaxes Tableau workbook (state). Mixed vintages by source.") +
   theme_swank() +
   theme(legend.position = "right", legend.text = element_text(size = 8), panel.grid.major.x = element_blank())
 p_fig3
@@ -320,10 +279,19 @@ ggsave(file.path(fig_dir, "fig03_collections_state_local_stacked.png"),
 
 ```{r}
 #| label: fig-collections-ranked
-#| fig-cap: "Every Ohio state and local tax, ranked by collections."
-ranked <- collections |>
-  distinct(level, tax_type, .keep_all = TRUE) |>
-  mutate(lab = paste0(tax_type, "  (", level, ")")) |>
+#| fig-cap: "Wisconsin state and local tax sources, ranked by collections (local grouped by tax type family)."
+local_family_map <- readr::read_csv(
+  here("data/intermediate/fig_local_tax_type_detail_latest.csv"), show_col_types = FALSE
+) |>
+  transmute(tax_type = tax, tax_type_plot = tax_family)
+
+ranked <- collections_wi |>
+  mutate(tax_type_plot = tax_type) |>
+  left_join(local_family_map, by = "tax_type", suffix = c("", "_local")) |>
+  mutate(tax_type_plot = if_else(level == "Local" & !is.na(tax_type_plot_local), tax_type_plot_local, tax_type_plot)) |>
+  group_by(level, tax_type_plot) |>
+  summarise(collections_b = sum(collections_b, na.rm = TRUE), .groups = "drop") |>
+  mutate(lab = paste0(tax_type_plot, "  (", level, ")")) |>
   arrange(collections_b) |>
   mutate(lab = factor(lab, levels = lab))
 
@@ -333,14 +301,11 @@ p_fig2 <- ggplot(ranked, aes(collections_b, lab, fill = level)) +
             hjust = -0.12, size = 3, color = "#404040") +
   scale_fill_manual(values = c(State = "#5B9BD5", Local = "#1F3864"), name = NULL) +
   scale_x_continuous(expand = expansion(mult = c(0, 0.14))) +
-  labs(title = "Every Ohio tax, ranked by collections",
+  labs(title = "Wisconsin tax sources ranked by collections",
        x = NULL, y = NULL,
        caption = str_wrap(paste(
-         "Source: ODT Tax Data Series. Figures combine the latest available year for each tax:",
-         "property tax and public-utility tangible property TY2025; state sales & use, county/transit sales,",
-         "motor fuel, and Commercial Activity Tax FY2025; municipal income tax CY2024;",
-         "individual income tax TY2024; school-district income tax CY2025;",
-         "smaller state and local taxes FY2024-CY2025."), 90)) +
+         "Source: TVC Tableau exports (local, CY2024) and WIStateandLocalTaxes Tableau workbook (state, FY2025).",
+         "Local rows are grouped to the same tax-type families used in fig_local_funding_by_tax_type."), 90)) +
   theme_swank() +
   theme(legend.position = "top", panel.grid.major.y = element_blank(),
         axis.text.x = element_blank(), panel.grid.major.x = element_blank())
@@ -349,30 +314,29 @@ ggsave(file.path(fig_dir, "fig02_collections_ranked_bar.png"),
        p_fig2, width = 8, height = 5, dpi = 300, bg = "white")
 ```
 
-Local **real** property tax (`r dollar(real_prop_b, accuracy = 0.1, suffix = "B")` net charged, TY2025 — plus a further `r dollar(put_b, accuracy = 0.1, suffix = "B")` of public-utility *tangible* property tax, a legally distinct instrument the amendment does not touch) is the single largest tax in the state — larger than the state sales tax or income tax. That `r dollar(real_prop_b, accuracy = 0.1, suffix = "B")` is the magnitude of the hole, and it is *local*. And it is concentrated on schools:
 
 ```{r}
 #| label: fig-jurisdiction-shares
-#| fig-cap: "Share of Ohio property-tax collections by jurisdiction type (Government Finance Database, 2022)."
-jur <- read_parquet(here("03_data-raw/external/govt_finance_database/midwest_2005_present.parquet"),
-                    col_select = all_of(c("state_name", "year", "govt_type_label", "Property_Tax"))) |>
-  filter(state_name == "Ohio", year == 2022, govt_type_label != "State") |>
-  group_by(govt_type_label) |>
-  summarise(ptax = sum(Property_Tax, na.rm = TRUE), .groups = "drop") |>
-  mutate(pct = round(ptax / sum(ptax) * 100, 1)) |>
+#| fig-cap: "Share of Wisconsin local property-tax levy by jurisdiction type (FY2025)."
+jur <- readr::read_csv(here("data/intermediate/fig12_wi_property_tax_by_jurisdiction.csv"),
+                       show_col_types = FALSE) |>
+  mutate(ptax = value_m * 1e6) |>
+  group_by(jurisdiction_type) |>
+  summarise(ptax = sum(ptax, na.rm = TRUE), .groups = "drop") |>
+  mutate(pct = round(ptax / sum(ptax, na.rm = TRUE) * 100, 1)) |>
   arrange(pct) |>
-  mutate(govt_type_label = factor(govt_type_label, levels = govt_type_label),
-         highlight = as.character(govt_type_label) == "School District")
+  mutate(jurisdiction_type = factor(jurisdiction_type, levels = jurisdiction_type),
+         highlight = as.character(jurisdiction_type) == "School District")
 
-p_fig12 <- ggplot(jur, aes(pct, govt_type_label, fill = highlight)) +
+p_fig12 <- ggplot(jur, aes(pct, jurisdiction_type, fill = highlight)) +
   geom_col(width = 0.7) +
   geom_text(aes(label = paste0(pct, "%")), hjust = -0.15, size = 3.6, color = "#404040") +
   scale_fill_manual(values = c(`TRUE` = swank_palette[2], `FALSE` = "#BFBFBF"), guide = "none") +
   scale_x_continuous(expand = expansion(mult = c(0, 0.12)), limits = c(0, 75)) +
-  labs(title = "School districts collect two-thirds of Ohio's property tax",
-       subtitle = "Property tax collected by jurisdiction type — Government Finance Database, Ohio 2022",
+  labs(title = "School districts collect the largest share of Wisconsin local property tax",
+       subtitle = "Local gross property-tax levy by jurisdiction type (FY2025)",
        x = NULL, y = NULL,
-       caption = "Source: Government Finance Database (Census of Governments), Ohio 2022. Reconcile to ODT property-tax tables before publishing.") +
+       caption = "Source: WIStateandLocalTaxes Tableau workbook, local gross levy components (FY2025).") +
   theme_swank() +
   theme(panel.grid.major = element_blank(), axis.text.x = element_blank())
 p_fig12
@@ -382,79 +346,10 @@ ggsave(file.path(fig_dir, "fig12_property_tax_by_jurisdiction.png"),
 
 <!-- This is now **computed from the Government Finance Database**, not lifted from the deck: school districts collect \~65% of Ohio property tax, counties \~17%, townships \~7%, municipalities \~6%, special districts \~4% (JVSDs fall inside "School District" here). The numbers sit close to Alex's deck figures; the publishable version still reconciles to ODT's property-tax tables, which are the statutory source of record. -->
 
-Confirming against the **ODT property-tax Tax Data Series** (taxes charged by *type of taxing subdivision*) — the source of record, compiled from county-auditor abstracts — reveals close figures using both 2022 and 2025 data. One definitional difference to hold in mind when comparing the two: the GFD chart above folds Joint Vocational School Districts (JVSDs) into "School District," while the ODT-based charts below break JVSDs out as their own category (a few percent of the total) — so "close figures" means close *after* accounting for that JVSD split, not an exact like-for-like match.
-
-```{r}
-#| label: fig-jurisdiction-shares-odt-2022
-#| fig-cap: "Allocated property tax levies by jurisdiction type — ODT Tax Data Series, Ohio 2022."
-# ---- Property tax by jurisdiction type: ODT tax district allocation ---------
-# Levy allocation itself (taxing-district levy split across overlapping
-# political units by each unit's share of the district's gross tax rate) now
-# lives in 02_code/1l-levy-allocation.R -- this chunk only aggregates its output
-# to jurisdiction-type shares and plots. Promoted here to kill a copy-paste
-# bug: this chunk and the 2025 chunk below used to be two ~115-line hand-
-# duplicated blocks (see 09_quality_reports/plans/2026-07-13_phase3-model-
-# descriptives.md, Phase 3C). odt() (identical to raw(), defined in setup)
-# is used by later chunks in this document, not this one.
-
-jur_2022 <- read_csv(here("04_data-clean/intermediate/levy_allocation_2022.csv"), show_col_types = FALSE) |>
-  filter(!is.na(jurisdiction_type), !is.na(allocated_levy)) |>
-  group_by(jurisdiction_type) |>
-  summarise(ptax = sum(allocated_levy, na.rm = TRUE), .groups = "drop") |>
-  mutate(pct = round(ptax / sum(ptax, na.rm = TRUE) * 100, 1)) |>
-  arrange(pct) |>
-  mutate(jurisdiction_type = factor(jurisdiction_type, levels = jurisdiction_type),
-        highlight = jurisdiction_type == "School District")
-
-p_fig12b_22 <- ggplot(jur_2022, aes(pct, jurisdiction_type, fill = highlight)) +
-  geom_col(width = 0.7) +
-  geom_text(aes(label = paste0(pct, "%")), hjust = -0.15, size = 3.6, color = "#404040") +
-  scale_fill_manual(values = c(`TRUE` = swank_palette[2], `FALSE` = "#BFBFBF"), guide = "none") +
-  scale_x_continuous(expand = expansion(mult = c(0, 0.12)), limits = c(0, 75)) +
-  labs(title = "School districts collect the largest share of Ohio property taxes",
-       subtitle = "Allocated property tax levies by jurisdiction type — ODT Tax Data Series, Ohio 2022",
-       x = NULL, y = NULL,
-       caption = "Source: ODT Tax Data Series, RPUAbs22 and rates22, via 02_code/1l-levy-allocation.R. Taxing-district levies allocated by each political unit's share of the gross tax rate.") +
-  theme_swank() +
-  theme(panel.grid.major = element_blank(), axis.text.x = element_blank())
-p_fig12b_22
-ggsave(file.path(fig_dir, "fig12_property_tax_by_jurisdiction_odt_2022.png"),
-       p_fig12b_22, width = 8, height = 4.5, dpi = 300, bg = "white")
-```
-
-```{r}
-#| label: fig-jurisdiction-shares-odt-2025
-#| fig-cap: "Allocated property tax levies by jurisdiction type — ODT Tax Data Series, Ohio 2025."
-jur_2025 <- read_csv(here("04_data-clean/intermediate/levy_allocation_2025.csv"), show_col_types = FALSE) |>
-  filter(!is.na(jurisdiction_type), !is.na(allocated_levy)) |>
-  group_by(jurisdiction_type) |>
-  summarise(ptax = sum(allocated_levy, na.rm = TRUE), .groups = "drop") |>
-  mutate(pct = round(ptax / sum(ptax, na.rm = TRUE) * 100, 1)) |>
-  arrange(pct) |>
-  mutate(jurisdiction_type = factor(jurisdiction_type, levels = jurisdiction_type),
-        highlight = jurisdiction_type == "School District")
-
-p_fig12b_25 <- ggplot(jur_2025, aes(pct, jurisdiction_type, fill = highlight)) +
-  geom_col(width = 0.7) +
-  geom_text(aes(label = paste0(pct, "%")), hjust = -0.15, size = 3.6, color = "#404040") +
-  scale_fill_manual(values = c(`TRUE` = swank_palette[2], `FALSE` = "#BFBFBF"), guide = "none") +
-  scale_x_continuous(expand = expansion(mult = c(0, 0.12)), limits = c(0, 75)) +
-  labs(title = "School districts collect the largest share of Ohio property taxes",
-       subtitle = "Allocated property tax levies by jurisdiction type — ODT Tax Data Series, Ohio 2025",
-       x = NULL, y = NULL,
-       caption = "Source: ODT Tax Data Series") +
-  theme_swank() +
-  theme(panel.grid.major = element_blank(), axis.text.x = element_blank())
-p_fig12b_25
-ggsave(file.path(fig_dir, "fig12_property_tax_by_jurisdiction_odt_2025.png"),
-       p_fig12b_25, width = 8, height = 4.5, dpi = 300, bg = "white")
-```
-
 How dependent are schools on the property tax specifically? Of the **own-source (local) revenue** a district raises itself — setting aside state and federal aid — property tax is the overwhelming majority: districts levy the voted school income tax in only a minority of cases (the SD income-tax map further below in this section), so for most districts property tax *is* own-source revenue.
 
 The precise own-source share is not yet computed from a reconciled district-finance source and is flagged here as an open item rather than asserted with false precision — see the note below and next-steps item 2. Two related, already-computed figures bound it from different directions: school districts collect the largest share of statewide property tax among jurisdiction types (the fig12 jurisdiction-type shares, above), and school districts are one of the two most property-tax-reliant levels of government by *total* revenue (§iv below) — a lower bound on the own-source share, since state and federal aid dilute the total-revenue denominator but not the own-source one.
 
-> **Open item.** A June 2026 planning slide measured a related but different thing — property tax as a share of school *tax* revenue (property vs income tax) — which this document does not yet reproduce: the GFD's per-district school income-tax figure is unreliable (it flags \~446 districts with an income tax vs the `r n_sd_income_positive` that actually levy one, FY2026 SD-2). Building the property-vs-income version requires joining the ODT school-income-tax table (`sd2…`, the authoritative `r n_sd_income_positive` districts) to per-district property tax, or pulling **ODE&W** district-finance data (`03_data-raw/external/odew/`) for the full revenue-by-source breakdown.
 
 ## Collections over time (2005–2023)
 
@@ -462,73 +357,68 @@ Everything above is a single-year cross-section. The Government Finance Database
 
 ```{r}
 #| label: fig-collections-trend
-#| fig-cap: "Ohio state + local tax collections by major instrument, 2005–2023 (nominal $, GFD)."
-gfd_trend <- read_parquet(
-  here("03_data-raw/external/govt_finance_database/midwest_2005_present.parquet"),
-  col_select = all_of(c("state_name", "year", "Property_Tax", "Total_Gen_Sales_Tax", "Individual_Income_Tax", "Total_Taxes"))
-) |>
-  filter(state_name == "Ohio") |>
-  group_by(year) |>
-  summarise(
-    `Property tax` = sum(Property_Tax, na.rm = TRUE) * 1000,
-    `General sales tax` = sum(Total_Gen_Sales_Tax, na.rm = TRUE) * 1000,
-    `Individual income tax` = sum(Individual_Income_Tax, na.rm = TRUE) * 1000,
-    total_taxes = sum(Total_Taxes, na.rm = TRUE) * 1000,
-    .groups = "drop"
-  )
+#| fig-cap: "Wisconsin tax collections trend: local property tax, individual income tax, state sales and use tax, and corporate income tax (nominal $)."
+trend_long <- readr::read_csv(here("data/intermediate/wi_four_tax_trend.csv"), show_col_types = FALSE)
 
-trend_long <- gfd_trend |>
-  select(-total_taxes) |>
-  tidyr::pivot_longer(-year, names_to = "tax_type", values_to = "collections") |>
-  mutate(collections_b = collections / 1e9)
+gfd_trend <- trend_long |>
+  select(year, tax_type, collections_usd) |>
+  tidyr::pivot_wider(names_from = tax_type, values_from = collections_usd) |>
+  mutate(total_taxes = rowSums(across(c(`Local Property Tax`, `Individual Income Tax`, `State Sales and Use Tax`, `Corporate Income Tax`)), na.rm = TRUE))
+
+ymin <- min(trend_long$year, na.rm = TRUE)
+ymax <- max(trend_long$year, na.rm = TRUE)
 
 p_trend <- ggplot(trend_long, aes(year, collections_b, color = tax_type)) +
   geom_line(linewidth = 1) +
   geom_point(size = 1.6) +
-  scale_color_manual(values = swank_palette[1:3], name = NULL) +
-  scale_x_continuous(breaks = seq(2005, 2023, 2)) +
+  scale_color_manual(values = c(
+    "Local Property Tax" = "#1F3864",
+    "Individual Income Tax" = "#70AD47",
+    "State Sales and Use Tax" = "#5B9BD5",
+    "Corporate Income Tax" = "#ED7D31"
+  ), name = NULL) +
+  scale_x_continuous(breaks = seq(ymin, ymax, 2)) +
   scale_y_continuous(labels = label_dollar(suffix = "B"), expand = expansion(mult = c(0.02, 0.08))) +
-  labs(title = "All three major Ohio taxes grew together; property tax never fell behind",
-       subtitle = "State + local collections by instrument, all Ohio governments summed, 2005-2023 (nominal dollars)",
+  labs(title = "Wisconsin major tax collections over time",
+       subtitle = "Local property tax + state individual income, sales/use, and corporate income taxes",
        x = NULL, y = NULL,
-       caption = "Source: Government Finance Database (Pierson, Hand & Thompson 2015), Ohio all-government sums. Nominal dollars, not inflation-adjusted -- a real (CPI-deflated) version is a next step. Non-census years (all but 2007/2012/2017/2022) are the Census Annual Survey sample, not a full count.") +
+       caption = "Source: WIStateandLocalTaxes Tableau workbook (local + state series). Nominal dollars; no inflation adjustment.") +
   theme_swank() +
   theme(legend.position = "top", panel.grid.major.x = element_blank())
 p_trend
 ggsave(file.path(fig_dir, "fig28_collections_trend_2005_2023.png"),
        p_trend, width = 9, height = 5.5, dpi = 300, bg = "white")
-```
 
-```{r}
-#| label: fig-property-share-trend
-#| fig-cap: "Property tax's share of total Ohio state + local tax revenue, 2005–2023."
-share_trend <- gfd_trend |>
-  mutate(property_share = `Property tax` / total_taxes)
-mean_share <- mean(share_trend$property_share, na.rm = TRUE)
-range_share <- range(share_trend$property_share, na.rm = TRUE)
+trend_indexed <- trend_long |>
+  group_by(tax_type) |>
+  mutate(
+    base_1985 = collections_b[match(1985, year)],
+    index_1985 = 100 * (collections_b / base_1985)
+  ) |>
+  ungroup()
 
-p_share_trend <- ggplot(share_trend, aes(year, property_share)) +
-  geom_line(color = swank_palette[1], linewidth = 1) +
-  geom_point(color = swank_palette[1], size = 1.6) +
-  geom_hline(yintercept = mean_share, linetype = "dashed", color = "grey50", linewidth = 0.4) +
-  scale_x_continuous(breaks = seq(2005, 2023, 2)) +
-  scale_y_continuous(labels = label_percent(accuracy = 1), limits = c(0, NA)) +
-  labs(title = "Property tax's share of total Ohio tax revenue has stayed remarkably flat",
-       subtitle = "Property tax ÷ total state + local tax collections, all governments, 2005-2023",
-       x = NULL, y = NULL,
-       caption = paste0("Source: Government Finance Database, Ohio all-government sums. Dashed line = 2005-2023 average (",
-                        percent(mean_share, accuracy = 1), "). Range across all 19 years: ",
-                        percent(range_share[1], accuracy = 1), "-", percent(range_share[2], accuracy = 1),
-                        " -- no secular decline despite HB 920 reduction factors; new construction and reappraisal growth",
-                        " have offset the millage erosion in the aggregate.")) +
+p_trend_idx1985 <- ggplot(trend_indexed, aes(year, index_1985, color = tax_type)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 1.6) +
+  scale_color_manual(values = c(
+    "Local Property Tax" = "#1F3864",
+    "Individual Income Tax" = "#70AD47",
+    "State Sales and Use Tax" = "#5B9BD5",
+    "Corporate Income Tax" = "#ED7D31"
+  ), name = NULL) +
+  scale_x_continuous(breaks = seq(ymin, ymax, 2)) +
+  scale_y_continuous(labels = label_number(accuracy = 1), expand = expansion(mult = c(0.02, 0.08))) +
+  labs(title = "Wisconsin major tax collections indexed to 1985",
+       subtitle = "1985 = 100 for each series (nominal dollars)",
+       x = NULL, y = "Index (1985 = 100)",
+       caption = "Source: WIStateandLocalTaxes Tableau workbook (local + state series).") +
   theme_swank() +
-  theme(panel.grid.major.x = element_blank())
-p_share_trend
-ggsave(file.path(fig_dir, "fig29_property_tax_share_trend_2005_2023.png"),
-       p_share_trend, width = 8, height = 5, dpi = 300, bg = "white")
+  theme(legend.position = "top", panel.grid.major.x = element_blank())
+p_trend_idx1985
+ggsave(file.path(fig_dir, "fig30_collections_trend_indexed_1985.png"),
+       p_trend_idx1985, width = 9, height = 5.5, dpi = 300, bg = "white")
 ```
 
-The headline is a small surprise: property tax's **share** of total Ohio state-and-local tax revenue has held close to **`r percent(mean_share, accuracy = 1)`** every year since 2005 (range across all 19 years: `r percent(range_share[1], accuracy = 1)`–`r percent(range_share[2], accuracy = 1)`), with no visible secular decline — despite HB 920's reduction-factor mechanism, which is specifically designed to hold *effective rates* down as values rise. That is consistent with the standard HB 920 story once you separate rate from revenue: reduction factors cap the *rate* increase from reappraisal, but new construction (added to the tax base at the *full*, un-reduced rate) and voted levies still let aggregate collections grow roughly in step with the other major taxes. This is a state-level aggregate, not a claim about any one district — individual districts with little new construction can and do see real erosion, which is exactly the Layer-3 school-finance question. All figures here are **nominal dollars**; a CPI-deflated (real) version is flagged as a next step rather than estimated with a hand-typed inflation series. Two caveats on the series above it. First, **"Individual income tax" and "General sales tax" are state *and* local combined** (Census T40/T09 categories summed across every Ohio government) — a different, larger aggregate than the `r dollar(collections$collections_b[collections$tax_type == "Individual income tax"], accuracy = 0.1, suffix = "B")` *state-only* individual income tax figure (TY2024, ODT Table Y-1) used in this document's income-tax baseline section below, so don't compare the two directly. Second, this GFD-derived trend has not yet been reconciled to the ODT Tax Data Series (the source of record per the project's source hierarchy) the way the single-year collections figures above it have been — treat the *trend* (flat, no erosion) as more load-bearing than any single year's *level* until that reconciliation is logged in `05_output/audit/audit_log.xlsx`.
 
 ## The geography of collections
 
@@ -536,24 +426,58 @@ Where the property tax is charged tracks property wealth and population:
 
 ```{r}
 #| label: fig-county-property
-#| fig-cap: "County net property tax charged, TY2025."
-prop_county <- read_odt(raw("Local Tax/Property_Tax_Real_Property/pd23ty25.xlsx"),
-                        sheet = "pd23ty25", header_token = "County") |>
-  select(county = 1, prop_tax_thou = 12) |>
-  mutate(county = str_to_title(county),
-         prop_tax = suppressWarnings(as.numeric(prop_tax_thou)) * 1000) |>
-  keep_oh_counties(county)
+#| fig-cap: "Wisconsin county local property-tax levy, aggregated from county + city + village + town jurisdictions (latest year)."
+wi_local_jur <- arrow::read_parquet(
+  here("data/raw/02_Local_Government_Dashboard_0.1.5a.twb_Files_federated_1/Extract__Extract.parquet")
+) |>
+  transmute(
+    year = as.integer(format(as.Date(Year), "%Y")),
+    county = str_to_title(as.character(`County Name`)),
+    muni_type_raw = as.character(`Muni Type Code`),
+    local_taxes = suppressWarnings(as.numeric(`Local Taxes (SOT TVC or County)`))
+  ) |>
+  mutate(
+    jurisdiction_type = case_when(
+      str_to_upper(muni_type_raw) %in% c("COUNTY") ~ "County",
+      str_to_upper(muni_type_raw) %in% c("C", "CITY") ~ "City",
+      str_to_upper(muni_type_raw) %in% c("V", "VILLAGE") ~ "Village",
+      str_to_upper(muni_type_raw) %in% c("T", "TOWN") ~ "Town",
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(year), !is.na(county), !is.na(local_taxes), !is.na(jurisdiction_type))
 
-p_fig7 <- oh_counties |> left_join(prop_county, by = "county") |>
+latest_local_year <- max(wi_local_jur$year, na.rm = TRUE)
+
+wi_county_local_tax <- wi_local_jur |>
+  filter(year == latest_local_year) |>
+  group_by(county) |>
+  summarise(
+    property_tax = sum(local_taxes, na.rm = TRUE),
+    n_jurisdictions = n(),
+    .groups = "drop"
+  )
+
+wi_county_map <- wi_county |>
+  mutate(county = str_to_title(NAME)) |>
+  left_join(wi_county_local_tax, by = "county") |>
+  mutate(property_tax = coalesce(property_tax, 0))
+
+p_fig7 <- wi_county_map |>
   ggplot() +
-  geom_sf(aes(fill = prop_tax), color = "white", linewidth = 0.1) +
-  scale_fill_swank_seq(name = "Net property tax charged", labels = label_usd_millions()) +
-  labs(title = "Where Ohio's property tax is charged",
-       subtitle = "Total net real + public-utility property taxes charged by county, tax year 2025",
-       caption = "Source: ODT Table PD-23 (pd23ty25.xlsx), net of HB 920 reduction factors. Charged, not collected.") +
+  geom_sf(aes(fill = property_tax), color = "white", linewidth = 0.1) +
+  scale_fill_swank_seq(name = "Local property tax levy", labels = label_usd_millions()) +
+  labs(
+    title = "Where local property-tax levy is concentrated in Wisconsin",
+    subtitle = paste0(
+      "County totals aggregating county + city + village + town jurisdictions, ",
+      latest_local_year
+    ),
+    caption = "Source: Wisconsin Local Government Dashboard Tableau extract (field: Local Taxes (SOT TVC or County)); summed to county."
+  ) +
   theme_swank_map()
 p_fig7
-ggsave(file.path(fig_dir, "fig07_county_property_tax_2025.png"),
+ggsave(file.path(fig_dir, "fig07_wi_county_local_property_tax_latest.png"),
        p_fig7, width = 8, height = 7, dpi = 300, bg = "white")
 ```
 
@@ -561,110 +485,42 @@ The leading replacement candidate — the sales tax — is collected somewhere q
 
 ```{r}
 #| label: fig-county-sales
-#| fig-cap: "County permissive sales/use tax collected, CY2025 (place of sale; county share only)."
-# keep_oh_counties() keeps the 88 county rows and DROPS the transit-authority rows,
-# so this map is the COUNTY permissive piece only (~$2.97B). The transit-authority
-# permissive piece (~$0.98B, e.g. COTA/GCRTA/SARTA) is excluded; with it the S-1
-# CY2025 grand total is ~$3.95B. The macro collections table (fig 2-3) instead uses
-# the S-2 FY2025 permissive total (~$3.67B) — a different table, vintage, and
-# coverage. Reconcile before publishing a single statewide local-sales number.
-sales_use <- read_odt(raw("Local Tax/SU_Permissive_Tax/s1cy25.xlsx"),
-                      sheet = "Summary", header_token = "County") |>
-  keep_oh_counties(county) |>
-  transmute(county, collections = suppressWarnings(as.numeric(cy_2025_total)))
+#| fig-cap: "Wisconsin county sales-tax distributions (latest full year, place of sale)."
+sales_use <- readr::read_csv(
+  here("data/intermediate/fig6_wi_county_sales_collections_latest_full_year.csv"),
+  show_col_types = FALSE
+) |>
+  transmute(
+    county = str_replace(str_to_title(as.character(county)), "^Saint\\s+", "St. "),
+    year = suppressWarnings(as.integer(year)),
+    collections = suppressWarnings(as.numeric(collections))
+  )
 
-p_fig6 <- oh_counties |> left_join(sales_use, by = "county") |>
+latest_sales_year <- max(sales_use$year, na.rm = TRUE)
+
+wi_county_sales_map <- wi_county |>
+  mutate(county = str_to_title(NAME)) |>
+  left_join(
+    sales_use |>
+      filter(year == latest_sales_year) |>
+      select(county, collections),
+    by = "county"
+  ) |>
+  mutate(collections = coalesce(collections, 0))
+
+p_fig6 <- wi_county_sales_map |>
   ggplot() +
   geom_sf(aes(fill = collections), color = "white", linewidth = 0.1) +
-  scale_fill_swank_seq(name = "CY2025 collections", labels = label_usd_millions()) +
-  labs(title = "Sales-tax collections concentrate where the selling happens",
-       subtitle = "County permissive sales/use tax collected, calendar year 2025 (county share; transit excluded)",
-       caption = "Source: ODT Table S-1 (s1cy25.xlsx, Summary), 88 county rows only — transit-authority permissive (~$1.0B) excluded. PLACE OF SALE, not residence or burden.") +
+  scale_fill_swank_seq(name = "Sales-tax distributions", labels = label_usd_millions()) +
+  labs(
+    title = "Sales-tax collections concentrate where the selling happens",
+    subtitle = paste0("Wisconsin county sales-tax distributions, calendar year ", latest_sales_year),
+    caption = "Source: Wisconsin DOR County Sales Tax Distributions Tableau workbook. Place-of-sale distributions by county."
+  ) +
   theme_swank_map()
 p_fig6
-ggsave(file.path(fig_dir, "fig06_county_sales_use_tax_2025.png"),
+ggsave(file.path(fig_dir, "fig06_wi_county_sales_tax_latest_full_year.png"),
        p_fig6, width = 8, height = 7, dpi = 300, bg = "white")
-```
-
-Municipal income tax — the second-largest local tax — is mostly levied where people *work*, adding yet another geography to the mismatch story. One caveat to read the map with: LG-11 reports each municipality under a single **home county**, so a city that straddles county lines (Columbus spans Franklin, Delaware, and Fairfield) has its *entire* collection booked to that one county. This is therefore a municipality-reported-county map, not a true workplace apportionment:
-
-```{r}
-#| label: fig-municipal-income
-#| fig-cap: "Net municipal income-tax collections by municipality-reported county, CY2024."
-lg11_m  <- read_excel(raw("Local Tax/Municipal_Income_Tax/lg11cy24.xlsx"),
-                      sheet = "LG11CY24", col_names = FALSE)
-muni_inc <- tibble(county   = as.character(lg11_m[[4]]),               # col 4 = County
-                   net_coll = suppressWarnings(as.numeric(lg11_m[[6]]))) |>  # col 6 = Net Collections
-  keep_oh_counties(county) |>
-  group_by(county) |>
-  summarise(muni_income = sum(net_coll, na.rm = TRUE), .groups = "drop")
-
-p_fig13 <- oh_counties |> left_join(muni_inc, by = "county") |>
-  mutate(muni_income = tidyr::replace_na(muni_income, 0)) |>   # Vinton has no reporting municipality -> $0, not grey
-  ggplot() +
-  geom_sf(aes(fill = muni_income), color = "white", linewidth = 0.1) +
-  scale_fill_swank_seq(option = "rocket", name = "Municipal income tax", labels = label_usd_millions()) +
-  labs(title = "Municipal income tax is collected where the jobs are",
-       subtitle = "Net municipal income-tax collections by municipality-reported county, calendar year 2024",
-       caption = "Source: ODT Table LG-11 (lg11cy24.xlsx), summed to each municipality's reported home county (cross-county cities booked to one county). $0 = no reporting municipality.") +
-  theme_swank_map()
-p_fig13
-ggsave(file.path(fig_dir, "fig13_municipal_income_by_county.png"),
-       p_fig13, width = 8, height = 7, dpi = 300, bg = "white")
-```
-
-The property-tax, sales-tax, and municipal-income maps above look alike because all three taxes scale with population. To see whether they are actually paid in *different* places, we map each county's **share of the statewide total** for property tax minus its share of statewide (sales + municipal income). That strips out the size gap and exposes the divergence:
-
-```{r}
-#| label: fig-tax-mismatch
-#| fig-cap: "Where property tax is paid vs where sales + municipal income are collected (share-of-statewide difference, ppt)."
-mismatch <- prop_county |>
-  select(county, prop_tax) |>
-  left_join(select(sales_use, county, sales = collections), by = "county") |>
-  left_join(muni_inc, by = "county") |>
-  mutate(across(c(prop_tax, sales, muni_income), ~ tidyr::replace_na(.x, 0)),
-         prop_sh = prop_tax / sum(prop_tax),
-         alt_sh  = (sales + muni_income) / sum(sales + muni_income),
-         diff_pp = (prop_sh - alt_sh) * 100)
-
-p_mismatch <- oh_counties |> left_join(mismatch, by = "county") |>
-  ggplot() +
-  geom_sf(aes(fill = diff_pp), color = "white", linewidth = 0.1) +
-  scale_fill_swank_div(name = "Property share − (sales+income) share, ppt") +
-  labs(title = "Property tax and its replacements are paid in different places",
-       subtitle = "County share of statewide property tax minus its share of statewide (sales + municipal income)",
-       caption = paste("Source: ODT PD-23 / S-1 / LG-11. Green = over-weight in PROPERTY (residential/suburban);",
-                       "purple = over-weight in SALES+INCOME (retail/job hubs). Shares normalise the size gap. Illustrative.")) +
-  theme_swank_map()
-p_mismatch
-ggsave(file.path(fig_dir, "fig18_tax_place_mismatch.png"),
-       p_mismatch, width = 8, height = 7, dpi = 300, bg = "white")
-```
-
-Green counties contribute more to the *property* base than to the *sales+income* base — the residential and suburban places whose households would bear a replacement collected elsewhere; purple counties are the retail and employment hubs that collect sales and municipal income out of proportion to their property tax. This is the Layer-2 redistribution problem in one frame. It pools two different bases, so treat it as illustrative, not a settled estimate.
-
-Schools' *other* tool — the voted income tax — is used by only a minority of districts, mostly rural and exurban ones, and raises far less than their property tax (`r dollar(collections$collections_b[collections$tax_type == "School district income tax"], accuracy = 0.1, suffix = "B")` statewide per the Table SD-2-based collections total, vs `r dollar(real_prop_b, accuracy = 0.1, suffix = "B")` real property; the SD-2 file's own direct sum across all districts, `r dollar(sum(sd_income$sd_income, na.rm = TRUE) / 1e9, accuracy = 0.001, suffix = "B")`, runs slightly higher — a small, unreconciled discrepancy between the two ways of totaling the same table). Grey districts levy no income tax at all:
-
-```{r}
-#| label: fig-sd-income
-#| fig-cap: "Annual school-district income-tax distributions by district, FY2026 (grey = no income tax; Lake Erie removed)."
-# sd_income (all districts, incl. $0) was hoisted to the prep-sd-income-count
-# chunk in section (ii) above so a live district count is available before
-# this chunk runs; reused here rather than re-derived.
-p_sdinc <- oh_sd_l |>
-  left_join(xwalk, by = c("GEOID" = "geoid")) |>
-  left_join(sd_income, by = "irn") |>
-  ggplot() +
-  geom_sf(aes(fill = sd_income), color = "white", linewidth = 0.05) +
-  geom_sf(data = oh_land, fill = NA, color = "grey30", linewidth = 0.3) +
-  scale_fill_swank_seq(option = "rocket", name = "Annual SD income tax", labels = label_usd_millions()) +
-  labs(title = "Only a minority of school districts levy an income tax",
-       subtitle = "Annual school-district income-tax distributions by district, FY2026 (grey = no income tax)",
-       caption = "Source: ODT Table SD-2 (sd2q4fy26.xlsx) + validated IRN-GEOID crosswalk + TIGER unified SD shapefile.") +
-  theme_swank_map()
-p_sdinc
-ggsave(file.path(fig_dir, "fig14_school_district_income_tax_2026.png"),
-       p_sdinc, width = 8, height = 7, dpi = 300, bg = "white")
 ```
 
 Finally, who *bears* the property tax locally depends on the class composition of each county's base — residential/agricultural (Class I) vs commercial, industrial, and mineral (Class II; public-utility tangible property is the separate PUT instrument, not Class II real property).
@@ -673,108 +529,65 @@ Based on share of taxable value:
 
 ```{r}
 #| label: fig-residential-share
-#| fig-cap: "Residential & agricultural share of taxable real-property value by county, TY2024."
-pd31 <- read_odt(raw("State Tax/Property_Tax/pd31cy24.xlsx"), header_token = "County") |>
-  select(county = 1, residential_value = 2, total_value = 17) |>
-  mutate(across(c(residential_value, total_value), ~ suppressWarnings(as.numeric(.x)))) |>
-  keep_oh_counties(county) |>
-  mutate(residential_share = residential_value / total_value)
+#| fig-cap: "Wisconsin county residential share of estimated property-tax collections (latest matched year)."
+class_est <- readr::read_csv(
+  here("data/intermediate/wi_property_tax_class_estimates_from_millage.csv"),
+  show_col_types = FALSE
+) |>
+  transmute(
+    year = suppressWarnings(as.integer(year)),
+    county = str_to_title(str_remove(as.character(county_name), "\\s+County$")),
+    class_group = as.character(class_group),
+    has_rate = as.logical(has_rate),
+    est_net_tax = suppressWarnings(as.numeric(estimated_net_tax_from_rate))
+  ) |>
+  filter(!is.na(year), !is.na(county), !is.na(class_group), !is.na(est_net_tax), has_rate)
 
-p_fig10 <- oh_counties |> left_join(pd31, by = "county") |>
+latest_fig10_year <- max(class_est$year, na.rm = TRUE)
+
+county_class <- class_est |>
+  filter(year == latest_fig10_year) |>
+  group_by(county, class_group) |>
+  summarise(est_net_tax = sum(est_net_tax, na.rm = TRUE), .groups = "drop")
+
+county_totals <- county_class |>
+  group_by(county) |>
+  summarise(total_est_net_tax = sum(est_net_tax, na.rm = TRUE), .groups = "drop")
+
+county_residential <- county_class |>
+  filter(class_group == "Residential") |>
+  select(county, residential_est_net_tax = est_net_tax)
+
+fig10_df <- county_totals |>
+  left_join(county_residential, by = "county") |>
+  mutate(
+    residential_est_net_tax = coalesce(residential_est_net_tax, 0),
+    residential_share = if_else(total_est_net_tax > 0, residential_est_net_tax / total_est_net_tax, NA_real_)
+  )
+
+p_fig10 <- wi_county |>
+  mutate(county = str_to_title(NAME)) |>
+  left_join(fig10_df, by = "county") |>
   ggplot() +
   geom_sf(aes(fill = residential_share), color = "white", linewidth = 0.1) +
-  scale_fill_swank_seq(name = "Residential share", labels = label_percent(accuracy = 1), limits = c(0, 1)) +
-  labs(title = "How much of each county's tax base is residential",
-       subtitle = "Residential & agricultural share of taxable real-property value, tax year 2024",
-       caption = "Source: ODT Table PD-31 (pd31cy24.xlsx). Share of VALUE (proxy for tax share; HB 920 class rates differ).") +
+  scale_fill_gradientn(
+    colours = c("#fffde7", "#cfe8ff", "#1f4e8c", "#6a1b9a"),
+    values = scales::rescale(c(0, 0.30, 0.70, 1)),
+    limits = c(0, 1),
+    labels = label_percent(accuracy = 1),
+    name = "Residential share",
+    na.value = "grey90"
+  ) +
+  labs(
+    title = "How much of each county's estimated property tax comes from residential class",
+    subtitle = paste0("Residential share of estimated net property-tax collections, calendar year ", latest_fig10_year),
+    caption = "Source: WI AssessedValues Tableau + TVC millage/rate extract. Estimated from assessed value by class × district net millage; pre-credit approximation."
+  ) +
   theme_swank_map()
 p_fig10
 ggsave(file.path(fig_dir, "fig10_residential_share_value_2024.png"),
        p_fig10, width = 8, height = 7, dpi = 300, bg = "white")
 ```
-
-Based on share of taxes levied:
-
-```{r}
-
-# ---- Percent of each county's property tax levy from residential property --
-
-property_tax_residential_share <- read_excel(
-  odt("Local Tax/Property_Tax_Real_Property/rpuabs25.xlsx"),
-  skip = 3,
-  sheet = "RPUAbs25"
-) |>
-  filter(`Field Name` == "Current real and public utility taxes levied") |>
-  group_by(`County Name`) |>
-  summarise(
-    residential_levy = sum(as.numeric(Residential), na.rm = TRUE),
-    total_levy = sum(as.numeric(`Total All Property`), na.rm = TRUE)
-  ) |> ungroup() |>
-  transmute(
-    county = stringr::str_to_title(stringr::str_to_lower(`County Name`)),
-    residential_levy = as.numeric(residential_levy),
-    total_levy = as.numeric(total_levy),
-    residential_share = residential_levy / total_levy
-  )
-
-p_fig10_b <- oh_counties |>
-  left_join(property_tax_residential_share, by = "county") |>
-  ggplot() +
-  geom_sf(aes(fill = residential_share), color = "white", linewidth = 0.1) +
-  scale_fill_swank_seq(
-    name = "Residential share",
-    labels = scales::label_percent(accuracy = 1),
-    limits = c(0, 1)
-  ) +
-  labs(
-    title = "What percent of each county's property-tax levy comes from residential property",
-    subtitle = "Residential share of current real and public utility taxes levied, tax year 2025",
-    caption = "Source: ODT Tax Data Series, RPUAbs25. Share equals residential levy divided by total all-property levy."
-  ) +
-  theme_swank_map()
-
-p_fig10_b
-
-```
-
-# Explore: county collections (interactive)
-
-The three county-level taxes above — property, sales, and municipal income — are easiest to compare side by side. Use the layer control to recolour the map by each tax; hover a county to read all three values at once.
-
-```{r interactive-map}
-#| column: page
-cty_i <- oh_counties |>
-  left_join(prop_county, by = "county") |>
-  left_join(sales_use,   by = "county") |>
-  left_join(muni_inc,    by = "county") |>
-  st_transform(4326)
-
-fmtM <- function(x) ifelse(is.na(x), "n/a", paste0("$", formatC(x / 1e6, 1, format = "f"), "M"))
-labs_html <- sprintf(
-  "<b>%s County</b><br/>Property tax: %s<br/>Sales tax: %s<br/>Municipal income: %s",
-  cty_i$county, fmtM(cty_i$prop_tax), fmtM(cty_i$collections), fmtM(cty_i$muni_income)
-) |> lapply(htmltools::HTML)
-
-pal_prop  <- colorNumeric("YlGnBu", cty_i$prop_tax,    na.color = "#eeeeee")
-pal_sales <- colorNumeric("BuPu",   cty_i$collections, na.color = "#eeeeee")
-pal_muni  <- colorNumeric("YlOrRd", cty_i$muni_income, na.color = "#eeeeee")
-
-leaflet(cty_i) |>
-  addProviderTiles("CartoDB.PositronNoLabels") |>
-  addPolygons(group = "Property tax", fillColor = ~pal_prop(prop_tax), weight = 0.6,
-              color = "white", fillOpacity = 0.85, label = labs_html,
-              highlightOptions = highlightOptions(weight = 2, color = "#333", bringToFront = TRUE)) |>
-  addPolygons(group = "Sales tax", fillColor = ~pal_sales(collections), weight = 0.6,
-              color = "white", fillOpacity = 0.85, label = labs_html) |>
-  addPolygons(group = "Municipal income", fillColor = ~pal_muni(muni_income), weight = 0.6,
-              color = "white", fillOpacity = 0.85, label = labs_html) |>
-  addLayersControl(baseGroups = c("Property tax", "Sales tax", "Municipal income"),
-                   options = layersControlOptions(collapsed = FALSE)) |>
-  addControl("Switch layers (top-right) to recolour; hover for all three taxes.",
-             position = "topleft")
-```
-
-This is the same place-of-X point in interactive form: the county that lights up for sales tax is rarely the one that lights up for property tax, and the municipal income map (place of work) is different again. Holding that geography in mind is the whole reason Layer 2 is hard.
 
 # (iv) What does each level spend?
 
@@ -783,7 +596,7 @@ Collections are only half the ledger. Using the Government Finance Database (Pie
 ```{r}
 #| label: fig-expenditure
 #| fig-cap: "What each local government spends on, Ohio 2022 (share of expenditure; total $B labelled)."
-exp <- readr::read_csv(here("04_data-clean/processed/ohio_expenditure_by_jurisdiction_2022.csv"),
+exp <- readr::read_csv(here("data/clean/wisconsin_expenditure_by_jurisdiction_2022.csv"),
                        show_col_types = FALSE) |>
   group_by(govt_type) |>
   mutate(total_b = sum(expenditure_usd) / 1e9, share = expenditure_usd / sum(expenditure_usd)) |>
@@ -811,7 +624,7 @@ p_exp <- ggplot(exp, aes(govt_type, share, fill = category)) +
             inherit.aes = FALSE, vjust = 0, size = 3, fontface = "bold", color = "#404040") +
   scale_y_continuous(labels = label_percent(), expand = expansion(mult = c(0, 0.08))) +
   scale_fill_manual(values = exp_cols, name = NULL) +
-  labs(title = "What each local government spends on, Ohio 2022",
+  labs(title = "What each local government spends on, Wisconsin 2022",
        subtitle = "Share of total expenditure by function; total expenditure labelled above each bar",
        x = NULL, y = NULL,
        caption = "Source: Government Finance Database Midwest extract (midwest_2005_present.parquet) via 1c-expenditure-summary.R. All major Census functions broken out; residual in 'Other'.") +
@@ -823,7 +636,7 @@ ggsave(file.path(fig_dir, "fig15_expenditure_by_jurisdiction_2022.png"),
 
 
 exp <- readr::read_csv(
-  here("04_data-clean/processed/ohio_expenditure_by_jurisdiction_2022.csv"),
+  here("data/clean/wisconsin_expenditure_by_jurisdiction_2022.csv"),
   show_col_types = FALSE
 ) |>
   group_by(category) |>
@@ -910,7 +723,7 @@ p_exp <- ggplot(
     name = NULL
   ) +
   labs(
-    title = "What Ohio local governments spend on, 2022",
+    title = "What Wisconsin local governments spend on, 2022",
     subtitle = "Share of total statewide local government expenditure by function",
     x = NULL,
     y = NULL,
@@ -939,14 +752,14 @@ ggsave(file.path(fig_dir, "fig15_expenditure_aggregated_2022.png"),
 #| label: fig-services-at-risk
 #| fig-cap: "Estimated property-tax-funded expenditure by function, Ohio 2022 (expenditure × level reliance; ad hoc)."
 reliance_gfd <- read_parquet(
-  here("03_data-raw/external/govt_finance_database/midwest_2005_present.parquet"),
+  here("data/raw/govt_finance_database/midwest_2005_present.parquet"),
   col_select = all_of(c("state_name", "year", "govt_type_label", "Property_Tax", "Total_Revenue"))
 ) |>
-  filter(state_name == "Ohio", year == 2022) |>
+  filter(state_name == "Wisconsin", year == 2022) |>
   group_by(govt_type_label) |>
   summarise(reliance = sum(Property_Tax, na.rm = TRUE) / sum(Total_Revenue, na.rm = TRUE), .groups = "drop")
 
-at_risk <- readr::read_csv(here("04_data-clean/processed/ohio_expenditure_by_jurisdiction_2022.csv"),
+at_risk <- readr::read_csv(here("data/clean/wisconsin_expenditure_by_jurisdiction_2022.csv"),
                            show_col_types = FALSE) |>
   left_join(reliance_gfd, by = c("govt_type" = "govt_type_label")) |>
   mutate(at_risk_usd = expenditure_usd * reliance) |>
@@ -954,7 +767,6 @@ at_risk <- readr::read_csv(here("04_data-clean/processed/ohio_expenditure_by_jur
   summarise(at_risk_b = sum(at_risk_usd, na.rm = TRUE) / 1e9, .groups = "drop") |>
   arrange(at_risk_b) |>
   mutate(category = factor(category, levels = category))
-readr::write_csv(at_risk, here("05_output/tables/ohio_expenditure_at_risk_2022.csv"))
 
 p_risk <- ggplot(at_risk, aes(at_risk_b, category)) +
   geom_col(fill = swank_palette[1], width = 0.72) +
@@ -962,7 +774,7 @@ p_risk <- ggplot(at_risk, aes(at_risk_b, category)) +
             hjust = -0.15, size = 3, color = "#404040") +
   scale_x_continuous(expand = expansion(mult = c(0, 0.16))) +
   labs(title = "Education is by far the most property-tax-dependent service",
-       subtitle = "Estimated property-tax-funded expenditure by function, Ohio 2022",
+       subtitle = "Estimated property-tax-funded expenditure by function, Wisconsin 2022",
        x = NULL, y = NULL,
        caption = "Source: GFD reliance (Property_Tax / Total_Revenue by level) × expenditure by function. Ad hoc; assumes proportional funding within a level.") +
   theme_swank() +
@@ -977,56 +789,56 @@ By this rough cut, **education (\~\$12B)** dwarfs everything — schools spend a
 
 # Bringing in the ACS data
 
-The tables above are *fiscal* (dollars by jurisdiction). Turning them into *who-bears-it* requires the ACS household data (`04_data-clean/processed/acs_county_oh_2024_5yr.parquet` and `pums_households_oh.parquet`, script `1a`). Two joins do most of the work:
+The tables above are *fiscal* (dollars by jurisdiction). Turning them into *who-bears-it* requires the ACS household data (`data/clean/acs_county_wi_2024_5yr.parquet` and `pums_households_oh.parquet`, script `1a`). Two joins do most of the work:
 
 - **County denominators.** Dividing the county property-tax-charged map (§iii) by ACS households or population gives property tax *per household* and *per capita* — the denominators every redistribution formula needs (Layer 2), and a fairer way to compare counties than raw dollars.
-- **Household incidence.** The PUMS file carries each household's own property tax, income, and tenure, so it converts the statewide `r dollar(real_prop_b, accuracy = 0.1, suffix = "B")` (real property) into a distribution *across the income range* (Layer 4) and lets us model how a sales- or income-tax replacement would land by decile.
+
 
 The county-denominator join comes first. Dividing county property tax charged (§iii) by ACS households reframes the map from "where the dollars are" to "what a typical household is charged" — a fairer basis for comparison and the denominator Layer 2 needs:
 
 ```{r}
 #| label: fig-per-household
 #| fig-cap: "County property tax charged per household (TY2025 ÷ ACS households)."
-acs_cty <- read_parquet(here("04_data-clean/processed/acs_county_oh_2024_5yr.parquet")) |>
+acs_cty <- read_parquet(here("data/clean/acs_county_wi_2024_5yr.parquet")) |>
   select(county, households, population)
 
-per_hh <- prop_county |>
-  left_join(acs_cty, by = "county") |>
-  mutate(prop_per_hh = prop_tax / households)
+# per_hh <- prop_county |>
+#   left_join(acs_cty, by = "county") |>
+#   mutate(prop_per_hh = prop_tax / households)
 
-p_perhh <- oh_counties |> left_join(per_hh, by = "county") |>
-  ggplot() +
-  geom_sf(aes(fill = prop_per_hh), color = "white", linewidth = 0.1) +
-  scale_fill_swank_seq(name = "Property tax / household", labels = label_dollar()) +
-  labs(title = "Property tax charged per household",
-       subtitle = "County property tax charged (TY2025) ÷ ACS households (2020-2024 5-year)",
-       caption = "Source: ODT Table PD-23 (pd23ty25.xlsx) ÷ ACS 5-yr households (acs_county_oh_2024_5yr.parquet).") +
-  theme_swank_map()
-p_perhh
-ggsave(file.path(fig_dir, "fig16_property_tax_per_household.png"),
-       p_perhh, width = 8, height = 7, dpi = 300, bg = "white")
+# p_perhh <- oh_counties |> left_join(per_hh, by = "county") |>
+#   ggplot() +
+#   geom_sf(aes(fill = prop_per_hh), color = "white", linewidth = 0.1) +
+#   scale_fill_swank_seq(name = "Property tax / household", labels = label_dollar()) +
+#   labs(title = "Property tax charged per household",
+#        subtitle = "County property tax charged (TY2025) ÷ ACS households (2020-2024 5-year)",
+#        caption = "Source: ODT Table PD-23 (pd23ty25.xlsx) ÷ ACS 5-yr households (acs_county_wi_2024_5yr.parquet).") +
+#   theme_swank_map()
+# p_perhh
+# ggsave(file.path(fig_dir, "fig16_property_tax_per_household.png"),
+#        p_perhh, width = 8, height = 7, dpi = 300, bg = "white")
 ```
 
 This per-household view ranks counties very differently from the raw-dollar map: wealthy suburban counties rise, and the metro counties fall once you divide by their many households — a preview of why the redistribution layer's *denominator choice* (per household vs per capita vs per pupil) materially changes who looks like a winner. Two more denominators make the point directly:
 
 ```{r}
-#| label: fig-per-capita
-#| fig-cap: "County property tax charged per capita (TY2025 ÷ ACS population)."
-per_cap <- prop_county |>
-  left_join(select(acs_cty, county, population), by = "county") |>
-  mutate(prop_per_capita = prop_tax / population)
+# #| label: fig-per-capita
+# #| fig-cap: "County property tax charged per capita (TY2025 ÷ ACS population)."
+# per_cap <- prop_county |>
+#   left_join(select(acs_cty, county, population), by = "county") |>
+#   mutate(prop_per_capita = prop_tax / population)
 
-p_percap <- oh_counties |> left_join(per_cap, by = "county") |>
-  ggplot() +
-  geom_sf(aes(fill = prop_per_capita), color = "white", linewidth = 0.1) +
-  scale_fill_swank_seq(name = "Property tax / capita", labels = label_dollar()) +
-  labs(title = "Property tax charged per capita",
-       subtitle = "County property tax charged (TY2025) ÷ ACS population (2020-2024 5-year)",
-       caption = "Source: ODT Table PD-23 (pd23ty25.xlsx) ÷ ACS 5-yr population (acs_county_oh_2024_5yr.parquet).") +
-  theme_swank_map()
-p_percap
-ggsave(file.path(fig_dir, "fig30_property_tax_per_capita.png"),
-       p_percap, width = 8, height = 7, dpi = 300, bg = "white")
+# p_percap <- oh_counties |> left_join(per_cap, by = "county") |>
+#   ggplot() +
+#   geom_sf(aes(fill = prop_per_capita), color = "white", linewidth = 0.1) +
+#   scale_fill_swank_seq(name = "Property tax / capita", labels = label_dollar()) +
+#   labs(title = "Property tax charged per capita",
+#        subtitle = "County property tax charged (TY2025) ÷ ACS population (2020-2024 5-year)",
+#        caption = "Source: ODT Table PD-23 (pd23ty25.xlsx) ÷ ACS 5-yr population (acs_county_wi_2024_5yr.parquet).") +
+#   theme_swank_map()
+# p_percap
+# ggsave(file.path(fig_dir, "fig30_property_tax_per_capita.png"),
+#        p_percap, width = 8, height = 7, dpi = 300, bg = "white")
 ```
 
 Per-capita spreads counties out differently again from per-household (household size varies by county, so the two denominators don't just rescale each other) — smaller-household, older counties rank higher per capita than they do per household.
@@ -1037,10 +849,10 @@ The third denominator, **per pupil**, only makes sense at the *school-district* 
 #| label: fig-per-pupil
 #| fig-cap: "Distribution of school-district property tax per pupil, Ohio 2022 (GFD)."
 gfd_sd <- read_parquet(
-  here("03_data-raw/external/govt_finance_database/midwest_2005_present.parquet"),
+  here("data/raw/govt_finance_database/midwest_2005_present.parquet"),
   col_select = all_of(c("state_name", "year", "govt_type_label", "Enrollment", "Property_Tax"))
 ) |>
-  filter(state_name == "Ohio", year == 2022, govt_type_label == "School District", Enrollment > 0) |>
+  filter(state_name == "Wisconsin", year == 2022, govt_type_label == "School District", Enrollment > 0) |>
   mutate(property_tax = Property_Tax * 1000, per_pupil = property_tax / Enrollment)
 
 statewide_per_pupil <- sum(gfd_sd$property_tax) / sum(gfd_sd$Enrollment)
@@ -1054,7 +866,7 @@ p_perpupil <- ggplot(gfd_sd, aes(per_pupil)) +
   labs(title = "Property tax per pupil varies enormously across Ohio school districts",
        subtitle = paste0(nrow(gfd_sd), " districts with reported enrollment, Ohio 2022 (top 1% trimmed from the x-axis for readability)"),
        x = "Property tax per pupil", y = "Number of districts",
-       caption = "Source: Government Finance Database, Ohio school districts, 2022. Districts with a large commercial/industrial/utility base relative to enrollment (e.g. a power plant) sit far out on the right tail -- real dispersion, not a data error.") +
+       caption = "Source: Government Finance Database, Wisconsin school districts, 2022. Districts with a large commercial/industrial/utility base relative to enrollment (e.g. a power plant) sit far out on the right tail -- real dispersion, not a data error.") +
   theme_swank() +
   theme(panel.grid.major.x = element_blank())
 p_perpupil
@@ -1073,9 +885,8 @@ The maps so far are about *places*. The PUMS file lets us ask the distributional
 ```{r}
 #| label: fig-incidence-owner
 #| fig-cap: "Owner-occupant property tax as a share of household income, by income decile."
-pums  <- read_parquet(here("04_data-clean/processed/pums_households_oh.parquet"))
+pums  <- read_parquet(here("data/clean/pums_households_wi.parquet"))
 inc_q <- property_tax_incidence(pums, n_groups = 10L)
-readr::write_csv(inc_q, here("05_output/tables/pums_property_incidence_decile.csv"))
 
 p_inc <- inc_q |>
   mutate(decile = factor(grp, levels = 1:10,
@@ -1107,20 +918,6 @@ Three caveats travel with this figure, and all three matter for the model:
 Renters bear property tax indirectly — landlords pass part of it through into rent. To get a renter burden we impute the property tax on each rental unit from its rent and assign the tenant a pass-through share. This figure fixes two inputs for that imputation: a 50% pass-through share and a price-to-rent ratio of 16, chosen when this baseline figure was first built.
 
 ```{r}
-#| label: p2r-status-read
-# Part II's compute_p2r() (02_code/functions/incidence.R) computes the p2r
-# ratio in-pipeline (2026-07-16 lock batch, item #57), replacing what used
-# to be a hand-set placeholder. Read live here so the status note below
-# does not repeat stale placeholder language for a value the model no
-# longer treats as unpinned.
-p2r_status        <- readr::read_csv(here("05_output/audit/sensitivity_p2r_source_audit.csv"), show_col_types = FALSE)
-p2r_in_sample_val <- as.numeric(p2r_status$value[p2r_status$quantity == "p2r_in_sample_BASELINE"])
-p2r_zillow_val    <- as.numeric(p2r_status$value[p2r_status$quantity == "p2r_zillow_market_LOW_ARM"])
-```
-
-Two things have changed since these two inputs were first set as placeholders, and this figure has not yet been updated to match. First, the **pass-through share**: the recent quasi-experimental literature (Philadelphia Fed WP 2025; MIT Center for Real Estate) estimates \$0.50–\$0.89 per \$1 passed through to rent, so 50% sits at the conservative end. Part II now runs pass-through as three explicit sensitivity arms (0%, 50%, 100%; `scenarios.yml` `incidence$pass_through_arms`) rather than a single point estimate, and this figure's 50% happens to match Part II's central arm. Second, the **price-to-rent ratio**: this figure still uses a fixed value of 16, but Part II's income- and sales-incidence engines (`3b`, `3c`) now compute the ratio in-pipeline via `compute_p2r()` — `r number(p2r_in_sample_val, accuracy = 0.01)` from this project's own PUMS extract (weighted-median owner home value ÷ weighted-median annual renter gross rent), with a Zillow ZHVI/ZORI low-arm sensitivity of `r number(p2r_zillow_val, accuracy = 0.01)`. Updating this baseline figure's ratio to match — and documenting a sensitivity range here, not just in Part II — remains a small, flagged inconsistency between this descriptive figure and the model (see next-steps item 7's done-note below).
-
-```{r}
 #| label: fig-incidence-combined
 #| fig-cap: "Property tax as a share of income by quantile — owners, renters (50% pass-through), and combined."
 pums_b <- add_ptax_burden(pums, p2r = 16, pass_through = 0.50)
@@ -1129,7 +926,6 @@ inc_all <- bind_rows(
   incidence_by_who(pums_b, "renter",   5L),
   incidence_by_who(pums_b, "combined", 5L)
 )
-readr::write_csv(inc_all, here("05_output/tables/pums_property_incidence_owner_renter_combined.csv"))
 
 # Whole-population (not by-quantile) aggregate rate for owners vs. renters --
 # n_groups = 1L collapses wtd_quantile_bins() to a single group, so
@@ -1174,7 +970,6 @@ paid_all <- bind_rows(
   incidence_by_who(pums_b, "renter",   5L),
   incidence_by_who(pums_b, "combined", 5L)
 )
-readr::write_csv(paid_all, here("05_output/tables/pums_property_total_paid_quantile.csv"))
 
 p_paid <- paid_all |>
   mutate(quantile = factor(grp, levels = 1:5, labels = paste0("Q", 1:5)),
@@ -1293,7 +1088,7 @@ The PUMS pull's person-level income lets us ask the flip side of the property-ta
 ```{r}
 #| label: fig-property-vs-income
 #| fig-cap: "Property tax vs. income tax as a share of household income, by income decile."
-persons   <- read_parquet(here("04_data-clean/processed/pums_persons_oh.parquet"))
+persons   <- read_parquet(here("data/clean/pums_persons_wi.parquet"))
 tax_units <- ohio_income_tax_units(persons)        # household = tax unit, TY2026 flat law
 income_tax_units_total_b <- sum(tax_units$income_tax * tax_units$wgtp, na.rm = TRUE) / 1e9
 
@@ -1401,7 +1196,7 @@ The figure below therefore compares two hand-coded constructions of Ohio law, no
 # survives only in 02_code/3b, for FEDERAL marginal rates. Renamed from
 # `taxsim` to `full_2a` here so the object name does not misstate what it
 # holds.
-full_2a   <- readr::read_csv(here("04_data-clean/processed/income_tax_taxsim.csv"), show_col_types = FALSE)
+full_2a   <- readr::read_csv(here("data/clean/income_tax_taxsim.csv"), show_col_types = FALSE)
 handcoded <- ohio_income_tax_taxunits(persons) |> select(tu, hc_tax = income_tax)
 
 # Rank and take rate denominators on tu_income_dist — full per-unit PUMS income
@@ -1472,7 +1267,7 @@ The integrated expenditure universe has *675* UCC items to map to the *28* indus
 # Read early so the prose immediately below can inline the motor-vehicle
 # share live rather than hand-type it; the fig25 chunk below re-reads the
 # same file to build the plot.
-industry_total_early <- readr::read_csv(here("04_data-clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv"),
+industry_total_early <- readr::read_csv(here("data/clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv"),
                                         show_col_types = FALSE)
 motor_vehicle_share <- industry_total_early$allocated_tax_burden[industry_total_early$bucket_name == "Motor vehicle and parts dealers"] /
   sum(industry_total_early$allocated_tax_burden, na.rm = TRUE)
@@ -1483,7 +1278,7 @@ Excluding the non-taxable and non-allocable UCC items, approximately `r scales::
 ```{r}
 #| label: fig-sales-tax-borne-by-households-collected-by-industry
 #| fig-cap: "Ohio sales and use tax collections borne by households (excl. business-to-business expenditures), by industry —  (2025 Ohio Tax Dept)."
-industry_total <- readr::read_csv(here("04_data-clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv"),
+industry_total <- readr::read_csv(here("data/clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv"),
                                   show_col_types = FALSE)
 
 p_industry <- industry_total |>
@@ -1499,7 +1294,7 @@ p_industry <- industry_total |>
   labs(title = "Allocated (to consumers) Ohio county sales/use tax burden by industry",
        subtitle = "Total allocable burden across demographic groups",
        x = NULL, y = "Allocated tax burden",
-       caption = "Source: 04_data-clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv (02_code/1g).") +
+       caption = "Source: data/clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv (02_code/1g).") +
   theme_swank() +
   theme(panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
 p_industry
@@ -1519,7 +1314,7 @@ Expenditure on different categories varies by income group. The following figure
 income_agg_order <- c("<$50k", "$50k-$99,999", "$100k-$149,999", "$150k+")
 
 ce_cu_bucket_spending_demo <- readr::read_csv(
-  here("04_data-clean/intermediate/cex/sales_tax_burden/expenditure_share_by_income_group_level2.csv"),
+  here("data/clean/intermediate/cex/sales_tax_burden/expenditure_share_by_income_group_level2.csv"),
   show_col_types = FALSE
 ) |>
   mutate(income_group_agg = factor(income_group_agg, levels = income_agg_order),
@@ -1534,7 +1329,7 @@ p_income_bucket_share_grouped <- ce_cu_bucket_spending_demo |>
   labs(title = "Share of CEX expenditures by level-2 category and income group",
        subtitle = "Shares sum to 100% within each income group",
        x = NULL, y = "Share of income group's total expenditure",
-       caption = "Source: 04_data-clean/intermediate/cex/sales_tax_burden/expenditure_share_by_income_group_level2.csv (02_code/1m).") +
+       caption = "Source: data/clean/intermediate/cex/sales_tax_burden/expenditure_share_by_income_group_level2.csv (02_code/1m).") +
   theme_swank() +
   theme(legend.position = "top", panel.grid.major.x = element_blank(),
         axis.text.x = element_text(angle = 45, hjust = 1))
@@ -1556,7 +1351,7 @@ income_order <- c("<$25k", "$25k-$49,999", "$50k-$74,999", "$75k-$99,999",
                   "$100k-$149,999", "$150k+")
 
 income_tax_burden_2025 <- readr::read_csv(
-  here("04_data-clean/intermediate/cex/sales_tax_burden/sales_tax_burden_by_income_group.csv"),
+  here("data/clean/intermediate/cex/sales_tax_burden/sales_tax_burden_by_income_group.csv"),
   show_col_types = FALSE
 ) |>
   mutate(income_group = factor(income_group, levels = income_order),
@@ -1570,7 +1365,7 @@ p_income_tax_burden_2025 <- income_tax_burden_2025 |>
   labs(title = "Average sales tax burden as a share of income",
        subtitle = "2025 allocated sales/use tax burden divided by average annual CU income, 2022-2024",
        x = NULL, y = "Sales tax burden as share of income",
-       caption = "Source: 04_data-clean/intermediate/cex/sales_tax_burden/sales_tax_burden_by_income_group.csv (02_code/1m).") +
+       caption = "Source: data/clean/intermediate/cex/sales_tax_burden/sales_tax_burden_by_income_group.csv (02_code/1m).") +
   theme_swank() +
   theme(panel.grid.major.x = element_blank())
 p_income_tax_burden_2025
@@ -1578,57 +1373,3 @@ ggsave(file.path(fig_dir, "fig27_cex_sales_tax_burden_by_income_group.png"),
        p_income_tax_burden_2025, width = 8, height = 5, dpi = 300, bg = "white")
 ```
 
-# Where this feeds the model, and what's next
-
-| Section / figure | What we learn | Feeds |
-|----|----|----|
-| \(i\) jurisdictions | Property tax is levied by 4 overlapping authority types | Layer 2 (collection ≠ spending) |
-| \(ii\) authority matrix + SD rate map | Who *can* replace lost revenue; rates vary widely | Layers 1, 3 |
-| \(iii\) collections by type | Real property tax (\~`r dollar(real_prop_b, accuracy = 0.1, suffix = "B")`; PUT \~`r dollar(put_b, accuracy = 0.1, suffix = "B")` separate) is the largest, most local tax | Layer 1 (replacement target) |
-| \(iii\) by jurisdiction / reliance | \~⅔ of property tax, and most school revenue, is at stake | Layer 3 |
-| \(iii\) county property tax | Per-county fiscal hole / hold-harmless baseline | Layer 2 |
-| \(iii\) sales & municipal income maps | Replacement revenue is collected where sales/jobs are, not where people live | Layer 2 (place-of-X) |
-| \(iii\) residential share | Class I vs II composition | Layers 4–5 |
-| \(iii\) place-of-payment mismatch | Property vs sales+income are paid in different counties | Layer 2 (place-of-X) |
-| \(iv\) expenditures + services-at-risk | What services lose their funding; education most exposed | brief framing |
-| (ACS/PUMS) incidence | Who bears property tax now, by income & tenure (\$ and % of income) | Layer 4 (incidence baseline) |
-| Income-tax baseline (figs 22-24) | Income tax is progressive where property tax is regressive; 2a's full hand-coded TY2026 construction is the anchored baseline | Layer 4 income leg; Part II `02_code/3b-income-incidence.R` |
-| CEX sales-tax burden (figs 25-27) | Sales-tax burden by industry and income group, from the rebuilt CEX chain | Layer 4 sales leg; Part II `02_code/3c-sales-incidence.R` |
-
-**Status and next steps.** Seven of the eleven items on this list are now done: the "Auditor of State" wording fix, the per-capita/per-pupil denominators, the renter pass-through/price-to-rent pin at the model level, the income baseline, the CEX pull, both replacement-tax incidence engines, and the scenario matrix. The four genuinely open items (1, 2, 5, 6) concentrate in reconciliation and geographic extension, not in the model itself.
-
-*Reconcile & correct (do first).*
-
-1.  Reconcile the §iii property-tax **jurisdiction shares** to the **ODT property-tax Tax Data Series** (taxes charged by *type of taxing subdivision*) and, for detail, **county-auditor** data — **not** the Auditor of State. The headline totals are now logged in `05_output/audit/audit_log.xlsx` (RECON_010–016); the open item is the subdivision-share cross-check (RECON_016).
-2.  Recompute the school-reliance distribution (§iii, own-source revenue) from **ODE&W** district-finance data.
-3.  ~~Fix the lingering "Auditor of State" wording across the repo~~ — **done**: `CLAUDE.md`, the data ledger, `eda_06_reconciliation.R` (+ its renamed output `recon_corelogic_vs_obm_2023.xlsx`), the audit-log benchmark (now `BM_ODT_TDS_PROPTAX`), and Alex's handoff all read ODT / county auditors.
-
-*Extend the descriptive base.*
-
-4.  ~~Per-capita and per-pupil property-tax denominators~~ — **done**: figs 30 and 31 above (per-household was already in; per-capita and per-pupil landed alongside the trend-chart work).
-5.  Municipal/township property-tax map (taxing-district crosswalk) — still open.
-6.  Close the collections residual: alcoholic-beverage, cannabis, casino (state); local-government fund, lodging, conveyance (local) — still open.
-
-*Toward the household-incidence model (Layer 4).*
-
-7.  ~~Pin the renter pass-through share and an Ohio price-to-rent ratio~~ — **done at the model level**: Part II now runs pass-through as three explicit sensitivity arms (0% / 50% / 100%, `scenarios.yml`) and computes the price-to-rent ratio in-pipeline via `compute_p2r()` (`r number(p2r_in_sample_val, accuracy = 0.01)` in-sample, `r number(p2r_zillow_val, accuracy = 0.01)` Zillow low arm; `05_output/audit/sensitivity_p2r_source_audit.csv`). **Not yet done**: this document's own renter figure (fig20, "Adding renters, and the combined picture" above) still uses the pre-batch fixed values (50% pass-through, price-to-rent 16) and has not been updated to read the pipeline's computed ratio — a small, flagged inconsistency between this descriptive figure and the model.
-8.  ~~Expand the PUMS pull and stand up an anchored income-tax baseline~~ — **done**: person-level pull, tax-unit construction, and (since TAXSIM cannot compute post-2023 law) 2a's hand-coded TY2026 baseline are in; see "The anchored baseline" above.
-9.  ~~Pull the CEX~~ — **done**: the full BLS five-quarter CEX chain (`1d`-`1g`, `1m`) is in the repo and feeds figs 25-27 above.
-10. ~~Compute replacement-tax incidence~~ — **done**: `02_code/3b-income-incidence.R` and `02_code/3c-sales-incidence.R` solve both legs under the locked scenario matrix and report the change in burden by decile and tenure against this document's baseline (`05_output/tables/winners_losers_by_decile_tenure.csv`).
-
-*Then the model proper.*
-
-11. ~~Stand up the scenario matrix~~ — **done**: `scenarios.yml` plus `02_code/3a`-`3e` implement the S01–S08 matrix (S02 retired 2026-07-16; S03 and S08 blocked, not scoped away — see Part II Sections 2 and 9). §iii's jurisdiction-share reconciliation (item 1) remains open but is no longer a precondition for the model, which reads its own anchor (`recon_pd23_real_vs_put_ty2025.csv`) directly.
-
-------------------------------------------------------------------------
-
-::: {.callout-note collapse="true"}
-## Build notes (strip before external sharing)
-
-- Renders top-to-bottom (confirmed Codex QC 2026-06-19; re-confirmed 2026-07-16); re-run after any data refresh and flag column drift.
-- Vintages are mixed across tables (FY2025 / TY2024 / CY2024 / CY2025 / TY2025) — carried in captions; do not relabel as one year. Every dollar in the collections total is a 2024 or 2025 vintage: \~74% 2025, \~24% 2024, \~2% straddling both. (Two label corrections, 2026-07-31: the individual income tax moved TY2023 → TY2024 in the 1b refresh, and the school-district income tax was labelled FY2026 after its *source file* `sd2q4fy26.xlsx` rather than the concept it measures — `collections_by_type.csv` has it as CY2025, four calendar-2025 quarterly deposits. Two things that are correctly FY2026 and must NOT be swept: the SD-2 district *count* used in the authority table, and the school-district income-tax *map*, both of which really are FY2026 Q4. The RPU-Abs comparator in the PUMS-vs-ODT section likewise stays TY2023 on purpose.)
-- Provisional items needing reconciliation (to **ODT** / county auditors, and ODE&W) before external use: the jurisdiction-share bar and the school-reliance distribution. Headline totals are now logged in `05_output/audit/audit_log.xlsx`.
-- Renter incidence (this document's own fig20 figure, not Part II's model), the services-at-risk cut, and the place-of-payment map are ad hoc / assumption-driven first cuts — labelled as such in-figure.
-- SD maps use the validated IRN→GEOID crosswalk (606/614 districts); the \~5 residual same-named districts are logged in `05_output/audit/sd_geoid_unmatched.csv`.
-- The income-tax baseline changed materially since this document was first drafted: `02_code/2a-income-tax-baseline.R` no longer calls TAXSIM (it cannot compute any law year after 2023) and instead hand-codes Ohio TY2026 law directly; TAXSIM survives only in `02_code/3b`, for federal marginal rates. Any prior draft, slide, or note describing this document's income-tax section as a "TAXSIM baseline" is stale.
-:::

@@ -1,0 +1,165 @@
+year,tax_type,collections_usd,collections_b
+1985,Corporate Income Tax,413600000.0,0.4136
+1985,Individual Income Tax,2009100000.0,2.0091
+1985,Local Property Tax,2626000000.0,2.626
+1985,State Sales and Use Tax,1453500000.0,1.4535
+1986,Corporate Income Tax,407600000.0,0.4076
+1986,Individual Income Tax,2239100000.0,2.2391
+1986,Local Property Tax,2719900000.0,2.7199
+1986,State Sales and Use Tax,1543300000.0,1.5433
+1987,Corporate Income Tax,470700000.0,0.4707
+1987,Individual Income Tax,2224100000.0,2.2241
+1987,Local Property Tax,2947500000.0,2.9475
+1987,State Sales and Use Tax,1651900000.0,1.6519
+1988,Corporate Income Tax,461400000.0,0.4614
+1988,Individual Income Tax,2320000000.0,2.32
+1988,Local Property Tax,3155500000.0,3.1555
+1988,State Sales and Use Tax,1769100000.0,1.7691
+1989,Corporate Income Tax,448400000.0,0.4484
+1989,Individual Income Tax,2576100000.0,2.5761
+1989,Local Property Tax,3410700000.0,3.4107
+1989,State Sales and Use Tax,1888200000.0,1.8882
+1990,Corporate Income Tax,436600000.0,0.4366
+1990,Individual Income Tax,2624900000.0,2.6249
+1990,Local Property Tax,3740300000.0,3.7403
+1990,State Sales and Use Tax,1983800000.0,1.9838
+1991,Corporate Income Tax,440900000.0,0.4409
+1991,Individual Income Tax,3003400000.0,3.0034
+1991,Local Property Tax,4041100000.0,4.0411
+1991,State Sales and Use Tax,2026700000.0,2.0267
+1992,Corporate Income Tax,437700000.0,0.4377
+1992,Individual Income Tax,3142200000.0,3.1422
+1992,Local Property Tax,4386800000.0,4.3868
+1992,State Sales and Use Tax,2127300000.0000002,2.1273000000000004
+1993,Corporate Income Tax,492000000.0,0.492
+1993,Individual Income Tax,3445800000.0,3.4458
+1993,Local Property Tax,4807100000.0,4.8071
+1993,State Sales and Use Tax,2260600000.0,2.2606
+1994,Corporate Income Tax,541300000.0,0.5413
+1994,Individual Income Tax,3628700000.0,3.6287
+1994,Local Property Tax,5084000000.0,5.084
+1994,State Sales and Use Tax,2427900000.0,2.4279
+1995,Corporate Income Tax,631800000.0,0.6318
+1995,Individual Income Tax,3904500000.0,3.9045
+1995,Local Property Tax,5215900000.0,5.2159
+1995,State Sales and Use Tax,2571200000.0,2.5712
+1996,Corporate Income Tax,636000000.0,0.636
+1996,Individual Income Tax,4157399999.9999995,4.157399999999999
+1996,Local Property Tax,5379300000.0,5.3793
+1996,State Sales and Use Tax,2704200000.0,2.7042
+1997,Corporate Income Tax,643800000.0,0.6438
+1997,Individual Income Tax,4544700000.0,4.5447
+1997,Local Property Tax,4865300000.0,4.8653
+1997,State Sales and Use Tax,2864400000.0,2.8644
+1998,Corporate Income Tax,627000000.0,0.627
+1998,Individual Income Tax,5047300000.0,5.0473
+1998,Local Property Tax,5120000000.0,5.12
+1998,State Sales and Use Tax,3047400000.0,3.0474
+1999,Corporate Income Tax,635200000.0,0.6352
+1999,Individual Income Tax,5162200000.0,5.1622
+1999,Local Property Tax,5455900000.0,5.4559
+1999,State Sales and Use Tax,3284700000.0,3.2847
+2000,Corporate Income Tax,644600000.0,0.6446
+2000,Individual Income Tax,5962000000.0,5.962
+2000,Local Property Tax,5668300000.0,5.6683
+2000,State Sales and Use Tax,3501700000.0,3.5017
+2001,Corporate Income Tax,537200000.0,0.5372
+2001,Individual Income Tax,5156600000.0,5.1566
+2001,Local Property Tax,6077900000.0,6.0779
+2001,State Sales and Use Tax,3609900000.0,3.6099
+2002,Corporate Income Tax,503000000.0,0.503
+2002,Individual Income Tax,4979700000.0,4.9797
+2002,Local Property Tax,6511900000.0,6.5119
+2002,State Sales and Use Tax,3695800000.0,3.6958
+2003,Corporate Income Tax,526500000.0,0.5265
+2003,Individual Income Tax,5052000000.0,5.052
+2003,Local Property Tax,6827200000.0,6.8272
+2003,State Sales and Use Tax,3737900000.0,3.7379
+2004,Corporate Income Tax,650500000.0,0.6505
+2004,Individual Income Tax,5277100000.0,5.2771
+2004,Local Property Tax,7145800000.0,7.1458
+2004,State Sales and Use Tax,3899300000.0,3.8993
+2005,Corporate Income Tax,764100000.0,0.7641
+2005,Individual Income Tax,5622700000.0,5.6227
+2005,Local Property Tax,7603200000.0,7.6032
+2005,State Sales and Use Tax,4038700000.0,4.0387
+2006,Corporate Income Tax,773200000.0,0.7732
+2006,Individual Income Tax,6126600000.0,6.1266
+2006,Local Property Tax,7777200000.0,7.7772
+2006,State Sales and Use Tax,4127600000.0000005,4.1276
+2007,Corporate Income Tax,890100000.0,0.8901
+2007,Individual Income Tax,6573800000.0,6.5738
+2007,Local Property Tax,8030900000.0,8.0309
+2007,State Sales and Use Tax,4158600000.0000005,4.158600000000001
+2008,Corporate Income Tax,837800000.0,0.8378
+2008,Individual Income Tax,6713700000.0,6.7137
+2008,Local Property Tax,8493400000.0,8.4934
+2008,State Sales and Use Tax,4268000000.0,4.268
+2009,Corporate Income Tax,629500000.0,0.6295
+2009,Individual Income Tax,6222700000.0,6.2227
+2009,Local Property Tax,8832400000.0,8.8324
+2009,State Sales and Use Tax,4084000000.0,4.084
+2010,Corporate Income Tax,834500000.0,0.8345
+2010,Individual Income Tax,6089200000.0,6.0892
+2010,Local Property Tax,9271400000.0,9.2714
+2010,State Sales and Use Tax,3944200000.0,3.9442
+2011,Corporate Income Tax,852900000.0,0.8529
+2011,Individual Income Tax,6700700000.0,6.7007
+2011,Local Property Tax,9533000000.0,9.533
+2011,State Sales and Use Tax,4109000000.0,4.109
+2012,Corporate Income Tax,906600000.0,0.9066
+2012,Individual Income Tax,7041700000.0,7.0417
+2012,Local Property Tax,9554800000.0,9.5548
+2012,State Sales and Use Tax,4288700000.0,4.2887
+2013,Corporate Income Tax,925400000.0,0.9254
+2013,Individual Income Tax,7496800000.0,7.4968
+2013,Local Property Tax,9642400000.0,9.6424
+2013,State Sales and Use Tax,4410100000.0,4.4101
+2014,Corporate Income Tax,967200000.0,0.9672
+2014,Individual Income Tax,7061400000.0,7.0614
+2014,Local Property Tax,9778600000.0,9.7786
+2014,State Sales and Use Tax,4628300000.0,4.6283
+2015,Corporate Income Tax,1004900000.0,1.0049
+2015,Individual Income Tax,7325800000.0,7.3258
+2015,Local Property Tax,9554900000.0,9.5549
+2015,State Sales and Use Tax,4892100000.0,4.8921
+2016,Corporate Income Tax,963000000.0,0.963
+2016,Individual Income Tax,7740800000.0,7.7408
+2016,Local Property Tax,9683800000.0,9.6838
+2016,State Sales and Use Tax,5065800000.0,5.0658
+2017,Corporate Income Tax,920900000.0,0.9209
+2017,Individual Income Tax,8039500000.0,8.0395
+2017,Local Property Tax,9853200000.0,9.8532
+2017,State Sales and Use Tax,5223900000.0,5.2239
+2018,Corporate Income Tax,893900000.0,0.8939
+2018,Individual Income Tax,8479200000.000001,8.4792
+2018,Local Property Tax,10076100000.0,10.0761
+2018,State Sales and Use Tax,5448100000.0,5.4481
+2019,Corporate Income Tax,1338100000.0,1.3381
+2019,Individual Income Tax,8994100000.0,8.9941
+2019,Local Property Tax,10258900000.0,10.2589
+2019,State Sales and Use Tax,5695600000.0,5.6956
+2020,Corporate Income Tax,1607900000.0,1.6079
+2020,Individual Income Tax,8742300000.0,8.7423
+2020,Local Property Tax,10678200000.0,10.6782
+2020,State Sales and Use Tax,5836200000.0,5.8362
+2021,Corporate Income Tax,2560100000.0,2.5601
+2021,Individual Income Tax,9283400000.0,9.2834
+2021,Local Property Tax,11436900000.0,11.4369
+2021,State Sales and Use Tax,6373500000.0,6.3735
+2022,Corporate Income Tax,2960000000.0,2.96
+2022,Individual Income Tax,9214400000.0,9.2144
+2022,Local Property Tax,11267800000.0,11.2678
+2022,State Sales and Use Tax,6978300000.0,6.9783
+2023,Corporate Income Tax,2748500000.0,2.7485
+2023,Individual Income Tax,9414700000.0,9.4147
+2023,Local Property Tax,11565700000.0,11.5657
+2023,State Sales and Use Tax,7456100000.0,7.4561
+2024,Corporate Income Tax,2702100000.0,2.7021
+2024,Individual Income Tax,9717700000.0,9.7177
+2024,Local Property Tax,11891700000.0,11.8917
+2024,State Sales and Use Tax,7587500000.0,7.5875
+2025,Corporate Income Tax,2761700000.0,2.7617
+2025,Individual Income Tax,10451100000.0,10.4511
+2025,Local Property Tax,12402200000.0,12.4022
+2025,State Sales and Use Tax,7831600000.0,7.8316
