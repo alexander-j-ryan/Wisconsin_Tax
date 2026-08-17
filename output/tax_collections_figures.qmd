@@ -995,11 +995,11 @@ ggsave(file.path(fig_dir, "fig21_pums_total_paid_quantile.png"),
        p_paid, width = 9, height = 5, dpi = 300, bg = "white")
 ```
 
-The figure below checks that same PUMS-based aggregate directly against the ODT administrative totals — a magnitude reconciliation, not an incidence comparison.
+The figure below checks that same PUMS-based aggregate directly against Wisconsin administrative property-tax estimates — a magnitude reconciliation, not an incidence comparison.
 
 ```{r}
 #| label: fig-acs-vs-odt-total
-#| fig-cap: "Total residential property tax paid: ACS PUMS combined (owner+renter) imputed estimate vs. ODT RPU-Abs residential-class levied and net totals, TY2023."
+#| fig-cap: "Total residential property tax paid: ACS PUMS combined (owner+renter) imputed estimate vs. Wisconsin residential-class gross and net property-tax estimates (latest year)."
 paid_all_10 <- bind_rows(
   incidence_by_who(pums_b, "owner",    10L),
   incidence_by_who(pums_b, "renter",   10L),
@@ -1023,39 +1023,32 @@ total_paid <- paid_all_10 |>
 owner_d10_b   <- sum(paid_all_10$total_paid[paid_all_10$who == "owner" & paid_all_10$grp == 10], na.rm = TRUE) / 1e9
 owner_total_b <- sum(paid_all_10$total_paid[paid_all_10$who == "owner"], na.rm = TRUE) / 1e9
 
-property_tax_total <- read_excel(
-  odt("Local Tax/Property_Tax_Real_Property/rpuabs23.xlsx"),
-  skip = 3,
-  sheet = "RPUAbs23"
-) |>
-  filter(`Field Name` == "Current real and public utility taxes levied") %>% summarise(total_paid = sum(as.numeric(`Total All Property`), na.rm = TRUE)/1000000000,
-  total_paid_resi = sum(as.numeric(`Residential`), na.rm = TRUE)/1000000000)
+wi_property_summary <- readr::read_csv(
+  here("data/intermediate/wi_property_tax_class_estimates_statewide_summary.csv"),
+  show_col_types = FALSE
+)
+latest_wi_year <- max(wi_property_summary$year, na.rm = TRUE)
+wi_residential_latest <- wi_property_summary |>
+  filter(year == latest_wi_year, class_group == "Residential") |>
+  summarise(
+    total_paid_resi_net = sum(estimated_net_tax_from_rate, na.rm = TRUE) / 1e9,
+    total_paid_resi_gross = sum(estimated_gross_tax_from_rate, na.rm = TRUE) / 1e9
+  )
 
-property_tax_total_minus <- read_excel(
-  odt("Local Tax/Property_Tax_Real_Property/rpuabs23.xlsx"),
-  skip = 3,
-  sheet = "RPUAbs23"
-) |>
-  filter(`Field Name` == "Credit from reduction factors") %>% summarise(total_paid = sum(as.numeric(`Total All Property`), na.rm = TRUE)/1000000000,
-  total_paid_resi = sum(as.numeric(`Residential`), na.rm = TRUE)/1000000000)
-
-property_tax_net <- read_excel(
-  odt("Local Tax/Property_Tax_Real_Property/rpuabs23.xlsx"),
-  skip = 3,
-  sheet = "RPUAbs23"
-) |>
-  filter(`Field Name` == "Net total") %>% summarise(total_paid = sum(as.numeric(`Total All Property`), na.rm = TRUE)/1000000000,
-  total_paid_resi = sum(as.numeric(`Residential`), na.rm = TRUE)/1000000000)
+property_tax_total <- wi_residential_latest |>
+  transmute(total_paid_resi = total_paid_resi_gross)
+property_tax_net <- wi_residential_latest |>
+  transmute(total_paid_resi = total_paid_resi_net)
 
 combine_all <- bind_rows(
   total_paid %>% mutate(source = "ACS PUMS"),
-  property_tax_total %>% mutate(source = "Ohio Tax Data (Levied)"),
-  property_tax_net %>% mutate(source = "Ohio Tax Data (Net)")
+  property_tax_total %>% mutate(source = "WI Property Data (Gross est.)"),
+  property_tax_net %>% mutate(source = "WI Property Data (Net est.)")
 )
 
 acs_total_resi_b  <- total_paid$total_paid_resi
-odt_levied_resi_b <- property_tax_total$total_paid_resi
-odt_net_resi_b    <- property_tax_net$total_paid_resi
+wi_gross_resi_b <- property_tax_total$total_paid_resi
+wi_net_resi_b   <- property_tax_net$total_paid_resi
 
 p_compare_src <- combine_all |>
   ggplot(aes(source, total_paid_resi, fill = source)) +
@@ -1064,12 +1057,12 @@ p_compare_src <- combine_all |>
             position = position_dodge(width = 0.8), vjust = -0.3, size = 2.7, color = "#404040") +
   scale_y_continuous(labels = label_dollar(suffix = "B"), expand = expansion(mult = c(0, 0.12))) +
   scale_fill_manual(values = c("ACS PUMS" = swank_palette[1],
-                               "Ohio Tax Data (Levied)" = swank_palette[4],
-                               "Ohio Tax Data (Net)" = swank_palette[3]), name = NULL) +
-  labs(title = "ACS PUMS's imputed total tracks ODT's net (post-credit) total, not the pre-credit levy",
+                               "WI Property Data (Gross est.)" = swank_palette[4],
+                               "WI Property Data (Net est.)" = swank_palette[3]), name = NULL) +
+  labs(title = "ACS PUMS's imputed total can be benchmarked against Wisconsin residential net and gross estimates",
        subtitle = "Total annual residential property tax paid, by source (constant 2024$)",
        x = "Source", y = NULL,
-       caption = "Source: ACS 2020-2024 PUMS (combined owner+renter, 50% pass-through) vs. ODT RPU-Abs (rpuabs23.xlsx), Residential field, TY2023.") +
+       caption = "Source: ACS 2020-2024 PUMS (combined owner+renter, 50% pass-through) vs. Wisconsin class estimates from millage and assessed values (`wi_property_tax_class_estimates_statewide_summary.csv`, residential, latest year).") +
   theme_swank() +
   theme(panel.grid.major.x = element_blank(), legend.position = "top")
 p_compare_src
@@ -1077,19 +1070,19 @@ ggsave(file.path(fig_dir, "fig_comparison_source_property_tax_magnitude.png"),
        p_compare_src, width = 9, height = 5, dpi = 300, bg = "white")
 ```
 
-The corrected ACS PUMS aggregate is `r dollar(acs_total_resi_b, accuracy = 0.1, suffix = "B")`, below ODT's post-credit net total of `r dollar(odt_net_resi_b, accuracy = 0.1, suffix = "B")` and well below the pre-credit levied total of `r dollar(odt_levied_resi_b, accuracy = 0.1, suffix = "B")` — the PUMS-based estimate tracks the *net* (after HB 920 reduction factors and rollbacks) concept, which is the right comparison, since PUMS respondents report what they actually paid. The gap to the net total is broadly consistent with PUMS's own `TAXAMT` top-coding (noted below) and a conservative renter pass-through imputation, both of which understate the true aggregate rather than overstate it. One vintage caveat on this comparison: the "(constant 2024$)" subtitle above describes only the ACS PUMS bar. The ODT RPU-Abs comparator (`rpuabs23.xlsx`, Residential field) is still TY2023 nominal — RPU-Abs is out of scope for the 2026-07-20 ACS-vintage migration (it stays on TY2023 for the separate, PI-locked renter relief-share gross-up elsewhere in this document) — so this figure now compares a 2024$ series against an unchanged TY2023 series, a roughly one-year-wider vintage gap than before the migration (PD-23's own audited Class I growth rate is \~4.66%/year, `05_output/audit/sensitivity_ptax_vintage_audit.csv`). That widening works in the same direction as the two understatement sources above, so it does not change the qualitative reading, but it is part of why the gap to the net total looks as large as it does.
+The corrected ACS PUMS aggregate is `r dollar(acs_total_resi_b, accuracy = 0.1, suffix = "B")`, against Wisconsin's latest-year residential net estimate of `r dollar(wi_net_resi_b, accuracy = 0.1, suffix = "B")` and residential gross estimate of `r dollar(wi_gross_resi_b, accuracy = 0.1, suffix = "B")`. Conceptually, the net comparator is the closer match to what PUMS respondents report as paid tax, while the gross comparator provides an upper benchmark before credits. The gap is directionally consistent with known understatement forces in PUMS incidence construction (notably `TAXAMT` top-coding and conservative renter pass-through assumptions). One vintage caveat remains: the ACS PUMS bar is in constant 2024 dollars, while the Wisconsin comparator uses the latest available year in `wi_property_tax_class_estimates_statewide_summary.csv` (`r latest_wi_year`), so this remains a cross-vintage benchmark rather than a strict same-year accounting reconciliation.
 
-So the two incidence views are complements. As a *share of income* the property tax falls hardest on lower-income households; in *total dollars* the top decile pays the most (owners' D10 alone ≈ `r dollar(owner_d10_b, accuracy = 0.01, suffix = "B")` of the `r dollar(owner_total_b, accuracy = 0.01, suffix = "B")` owner total, decile grain from the ACS-vs-ODT comparison above). The model will report both. One caveat to carry: PUMS top-codes property tax at \$27,500, so the top decile's true total is somewhat higher than shown — the dollar gradient is if anything steeper.
+So the two incidence views are complements. As a *share of income* the property tax falls hardest on lower-income households; in *total dollars* the top decile pays the most (owners' D10 alone ≈ `r dollar(owner_d10_b, accuracy = 0.01, suffix = "B")` of the `r dollar(owner_total_b, accuracy = 0.01, suffix = "B")` owner total, decile grain from the ACS-vs-WI comparison above). The model will report both. One caveat to carry: PUMS top-codes property tax at \$27,500, so the top decile's true total is somewhat higher than shown — the dollar gradient is if anything steeper.
 
 ## A first move toward income-tax incidence
 
-The PUMS pull's person-level income lets us ask the flip side of the property-tax question: how would an **income tax** distribute? This subsection and the two that follow build that comparison in three steps of increasing rigor. This subsection applies Ohio's (now near-flat) income tax to PUMS households directly, treating each household as a single filer — a first, deliberately simple cut. The next subsection replaces the household with the real tax-filing unit. The subsection after that replaces the simple flat-rate calculation with `02_code/2a-income-tax-baseline.R`'s full hand-coded TY2026 statutory construction, the baseline Part II's income-replacement scenarios actually use.
+The PUMS pull's person-level income lets us ask the flip side of the property-tax question: how would an **income tax** distribute? This subsection and the two that follow build that comparison in three steps of increasing rigor. This subsection applies Wisconsin's progressive income tax to PUMS households directly, treating each household as a single filer — a first, deliberately simple cut. The next subsection replaces the household with the real tax-filing unit. The subsection after that replaces this single-filer shortcut with `scripts/2a-income-tax-baseline.R`'s full hand-coded TY2025 statutory construction at the real tax-unit grain, the baseline Part II's income-replacement scenarios actually use.
 
 ```{r}
 #| label: fig-property-vs-income
 #| fig-cap: "Property tax vs. income tax as a share of household income, by income decile."
 persons   <- read_parquet(here("data/clean/pums_persons_wi.parquet"))
-tax_units <- ohio_income_tax_units(persons)        # household = tax unit, TY2026 flat law
+tax_units <- wisconsin_income_tax_units(persons)   # household = single tax unit, TY2025 WI law
 income_tax_units_total_b <- sum(tax_units$income_tax * tax_units$wgtp, na.rm = TRUE) / 1e9
 
 # Compare the property tax (combined owner+renter, from pums_b above) with the
@@ -1121,7 +1114,7 @@ p_pvi <- compare |>
   labs(title = "Property tax is regressive; the income tax is progressive",
        subtitle = "Tax as a share of household income, by income decile (constant 2024$)",
        x = "Household income decile (weighted)", y = NULL,
-       caption = "Source: ACS 2020-2024 PUMS. Property = combined owner+renter (50% pass-through); income = hand-coded Ohio flat 2.75% (crude). Current levels, not revenue-matched.") +
+       caption = "Source: ACS 2020-2024 PUMS. Property = combined owner+renter (50% pass-through); income = hand-coded Wisconsin TY2025 progressive tax, household as single filer (crude). Current levels, not revenue-matched.") +
   theme_swank() +
   theme(legend.position = "top", panel.grid.major.x = element_blank())
 p_pvi
@@ -1131,9 +1124,9 @@ ggsave(file.path(fig_dir, "fig22_property_vs_income_incidence.png"),
 
 This is the single most important picture for the "who pays instead" question. The **property tax falls hardest on lower-income households** (it tracks housing, a big share of a low income); the **income tax does the opposite**, rising with income. Replacing the property tax with an income tax would therefore shift the burden up the income distribution, toward higher earners — the finding the rest of this income-tax arc exists to sharpen, not overturn.
 
-As a sanity check on the PUMS-to-tax-unit approach, this simple hand-code's weighted statewide total is `r dollar(income_tax_units_total_b, accuracy = 0.1, suffix = "B")`, close to Ohio's actual `r dollar(collections$collections_b[collections$tax_type == "Individual income tax"], accuracy = 0.1, suffix = "B")` individual income tax (TY2024, ODT Table Y-1 — the same figure the collections chart above uses).
+As a sanity check on the PUMS-to-tax-unit approach, this simple hand-code's weighted statewide total is `r dollar(income_tax_units_total_b, accuracy = 0.1, suffix = "B")`, to be read against Wisconsin's actual `r dollar(collections_wi$collections_b[collections_wi$tax_type == "Individual Income"], accuracy = 0.1, suffix = "B")` individual income tax (the same figure the collections chart above uses). The household-as-single-filer shortcut collapses multi-earner households into one filer, so this first cut understates the exemptions and standard deductions a household's real filing units would claim; the two subsections that follow correct it.
 
-Three things to hold, resolved to varying degrees by the two subsections that follow. First, levels are not matched: today's actual income tax raises `r dollar(collections$collections_b[collections$tax_type == "Individual income tax"], accuracy = 0.1, suffix = "B")` against the real property tax's `r dollar(collections$collections_b[collections$tax_type == "Property tax (real, net charged)"], accuracy = 0.1, suffix = "B")`, so this figure compares *shapes*, not dollars — a revenue-neutral replacement would scale the income-tax bars up roughly `r round(collections$collections_b[collections$tax_type == "Property tax (real, net charged)"] / collections$collections_b[collections$tax_type == "Individual income tax"], 1)`-fold while keeping the progressive tilt; the scenario matrix (`scenarios.yml`, Part II) is where we solve for the rate that actually replaces the property tax and report the matched-revenue distribution. Second, this hand-code is crude — household treated as a single tax unit, Ohio taxable income proxied as income minus Social Security/SSI/assistance, the flat statutory rate applied with no personal exemption, no deductions or credits, no federal interaction — and the next two subsections refine it, first by building real tax-filing units, then by substituting 2a's full statutory construction. Third, this is the *current* income tax, not a designed replacement; the scenario matrix reports the *change* in burden a revenue-matched income-tax scenario would produce, not the level shown here.
+Three things to hold, resolved to varying degrees by the two subsections that follow. First, levels are not matched: today's actual income tax raises `r dollar(collections_wi$collections_b[collections_wi$tax_type == "Individual Income"], accuracy = 0.1, suffix = "B")` against total local property tax of `r dollar(sum(collections_wi$collections_b[collections_wi$level == "Local"]), accuracy = 0.1, suffix = "B")`, so this figure compares *shapes*, not dollars — a revenue-neutral replacement would scale the income-tax bars up roughly `r round(sum(collections_wi$collections_b[collections_wi$level == "Local"]) / collections_wi$collections_b[collections_wi$tax_type == "Individual Income"], 1)`-fold while keeping the progressive tilt; the scenario matrix (`scenarios.yml`, Part II) is where we solve for the rate that actually replaces the property tax and report the matched-revenue distribution. Second, this hand-code is crude — the whole household is collapsed into a single filer, Wisconsin taxable income proxied as income minus Social Security/SSI/assistance, a single standard deduction and one personal exemption netted off before the progressive brackets, no other deductions or credits, no federal interaction — and the next two subsections refine it, first by building real tax-filing units, then by substituting 2a's full statutory construction. Third, this is the *current* income tax, not a designed replacement; the scenario matrix reports the *change* in burden a revenue-matched income-tax scenario would produce, not the level shown here.
 
 ## Getting more sophisticated: real tax units
 
@@ -1141,8 +1134,8 @@ The household = tax unit shortcut above is convenient but blunt — a household 
 
 ```{r}
 #| label: fig-income-tax-units
-#| fig-cap: "Hand-coded Ohio income tax with real tax units — effective rate by tax-unit income decile."
-refined <- ohio_income_tax_taxunits(persons)     # persons read in the section above
+#| fig-cap: "Hand-coded Wisconsin income tax with real tax units — effective rate by tax-unit income decile."
+refined <- wisconsin_income_tax_taxunits(persons)   # persons read in the section above
 
 ri <- refined |>
   filter(tu_income > 0) |>
@@ -1168,36 +1161,34 @@ p_tu <- ri |>
   geom_text(aes(label = percent(rate, accuracy = 0.1)), vjust = -0.4, size = 3.4, color = "#404040") +
   scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.12))) +
   labs(title = "The income tax stays progressive once we build real tax units",
-       subtitle = "Hand-coded Ohio flat tax, by tax-unit income decile (constant 2024$)",
+       subtitle = "Hand-coded Wisconsin income tax (TY2025 brackets), by tax-unit income decile (constant 2024$)",
        x = "Tax-unit income decile (weighted)", y = NULL,
-       caption = "Source: ACS 2020-2024 PUMS. Tax units = householder+spouse joint, other adults single, minors as dependents. Crude flat 2.75%.") +
+       caption = "Source: ACS 2020-2024 PUMS. Tax units = householder+spouse joint, other adults single, minors as dependents. TY2025 Wisconsin brackets (3.50-7.65%) by filing status, income-phased standard deduction, $700/person exemption.") +
   theme_swank() + theme(panel.grid.major.x = element_blank())
 p_tu
 ggsave(file.path(fig_dir, "fig23_income_tax_units_incidence.png"),
        p_tu, width = 8, height = 5, dpi = 300, bg = "white")
 ```
 
-Splitting households this way produces **\~`r scales::comma(n_units, accuracy = 1000)` tax units from \~`r scales::comma(n_hh, accuracy = 1000)` households** — about **`r scales::percent(multi_filer_share, accuracy = 1)` of households contain more than one filer** — and because each unit gets its own exemption, the hand-coded total falls from **`r dollar(income_tax_units_total_b, accuracy = 0.1, suffix = "B")`** (household = unit) to about **`r dollar(total_taxunits_b, accuracy = 0.1, suffix = "B")`**. The *shape* is unchanged — still progressive, rising from \~0% at the bottom to **`r scales::percent(top_rate, accuracy = 0.1)`** at the top — but the refinement matters for the *level* (more exemptions claimed) and for *low-income units* (an adult child or roommate now shows up as their own low-income filer rather than being averaged into a higher-income household). This tax-unit construction is the methodologically right base for the flat-tax counterfactual, and it carries forward into the next subsection, which substitutes 2a's full statutory construction for the flat-rate shortcut used here and above.
+Splitting households this way produces **\~`r scales::comma(n_units, accuracy = 1000)` tax units from \~`r scales::comma(n_hh, accuracy = 1000)` households** — about **`r scales::percent(multi_filer_share, accuracy = 1)` of households contain more than one filer** — and because each unit gets its own exemption, the hand-coded total falls from **`r dollar(income_tax_units_total_b, accuracy = 0.1, suffix = "B")`** (household = unit) to about **`r dollar(total_taxunits_b, accuracy = 0.1, suffix = "B")`**. The *shape* is unchanged — still progressive, rising from \~0% at the bottom to **`r scales::percent(top_rate, accuracy = 0.1)`** at the top — but the refinement matters for the *level* (more exemptions claimed) and for *low-income units* (an adult child or roommate now shows up as their own low-income filer rather than being averaged into a higher-income household). This tax-unit construction is the methodologically right base for the income-tax counterfactual, and it carries forward into the next subsection, which substitutes 2a's full statutory construction for the simplified bracket schedule used here.
 
-## The anchored baseline: hand-coded TY2026 law
+## The anchored baseline: hand-coded TY2025 law
 
-The simple hand-code above is transparent but misses real tax law — a personal exemption and the statutory base amount. The natural next step would be to run the same tax units through NBER TAXSIM under Ohio's current law, but **TAXSIM cannot do this**: the installed `usincometaxes` package (verified 2026-07-15) errors on any law year after 2023, and no newer CRAN version exists. `02_code/2a-income-tax-baseline.R` instead hand-codes Ohio's full TY2026 statute directly — a single flat 2.75% bracket (\$0 at or below \$26,050 of taxable income, then \$332 plus 2.75% of the excess) with MAGI-tiered personal exemptions (\$2,350 / \$2,100 / \$1,850 per exemption, eliminated entirely at \$500,000 MAGI) — and this is the **anchored income-tax baseline** for the rest of the analysis, including every scenario in Part II. The schedule is validated three ways: the \$332 base amount against two independent sources (the ORC 5747.02 text and a cross-check against a national tax-policy summary), a bracket-continuity diagnostic (the schedule must evaluate identically at each bracket boundary) that pinned the correct \$360.69/\$332 values after a PI review caught a stale-worksheet \$342 base during construction (logged in `MEMORY.md`'s `[LEARN:ohio-statute]` entry), and `02_code/functions/test_ohio_income_handcode.R`'s 19 automated assertions (`make test`). TAXSIM survives in exactly one place in this project — `02_code/3b-income-incidence.R`, for *federal* marginal rates only, as a documented 2023-law stable-structure proxy — and does not touch the Ohio-side liability anywhere.
+The simple hand-code above already applies Wisconsin's progressive brackets, standard deduction, and personal exemption — but it is coarse in how it builds units and measures income: it sums raw PUMS person income at the tax-unit grain (so reported business and investment losses erode the base) and counts one exemption per person in the unit. The natural next step would be to run the tax units through NBER TAXSIM, but **TAXSIM cannot do this**: the installed `usincometaxes` package (verified 2026-07-15) errors on any law year after 2023, and no newer CRAN version exists. `scripts/2a-income-tax-baseline.R` instead hand-codes Wisconsin's full TY2025 statute directly — the four-bracket progressive schedule (3.50 / 4.40 / 5.30 / 7.65%) with filing-status-specific thresholds, the income-phased standard deduction, and the \$700-per-exemption personal exemption — mapping Wisconsin AGI field by field (wages, interest, and pensions floored at zero per person; Social Security excluded) on real filing units built with primary/spouse/dependent roles. This is the **anchored income-tax baseline** for the rest of the analysis, including every scenario in Part II. The schedule is validated by `scripts/functions/test_wi_income_handcode.R`'s 17 automated assertions, which pin the open-on-the-left bracket-boundary behavior, the standard-deduction phase-out at its max / phase-out-start / zero-out points for both filing statuses, and single-vs-married-jointly exemption counting. Neither construction models the federal side of the code: ACS PUMS carries no itemization detail, so the federal SALT deduction and refundable credits (EITC, child credits) are out of scope for this baseline.
 
-The figure below therefore compares two hand-coded constructions of Ohio law, not two law years: this document's own simple hand-code (flat 2.75% above \$26,050, no personal exemption, immediately above) against 2a's full statutory construction (personal exemptions plus the \$332 base). Framed this way, the figure is a construction-refinement check on the anchored baseline, not a validation against an independent engine.
+The figure below therefore compares two hand-coded constructions of the same TY2025 Wisconsin law, not two law years: this document's own simple tax-unit hand-code (raw summed PUMS income, exemption per person, immediately above) against 2a's full statutory construction (field-mapped Wisconsin AGI on real filing units). Framed this way, the figure is a construction-refinement check on the anchored baseline, not a validation against an independent engine.
 
 ```{r}
 #| label: fig-taxsim-vs-handcoded
-#| fig-cap: "Ohio income tax as a share of income, by tax-unit decile — simple hand-code vs. 2a's full hand-coded TY2026 baseline."
-# income_tax_taxsim.csv is written by 02_code/2a-income-tax-baseline.R. The
-# filename is legacy (2a called TAXSIM through 2026-07-14); since the
-# 2026-07-15 income-handcode phase, 2a no longer calls TAXSIM at all -- its
-# `ohio_income_tax` column is 2a's own HAND-CODED TY2026 Ohio liability
-# (full bracket schedule + MAGI-tiered personal exemptions). TAXSIM
-# survives only in 02_code/3b, for FEDERAL marginal rates. Renamed from
-# `taxsim` to `full_2a` here so the object name does not misstate what it
-# holds.
+#| fig-cap: "Wisconsin income tax as a share of income, by tax-unit decile — simple hand-code vs. 2a's full hand-coded TY2025 baseline."
+# income_tax_taxsim.csv is written by scripts/2a-income-tax-baseline.R. The
+# filename is legacy (inherited from the Ohio project, where 2a once called
+# TAXSIM); it does not call TAXSIM. Its `wi_income_tax` column is 2a's own
+# HAND-CODED TY2025 Wisconsin liability (full filing-status bracket schedule +
+# income-phased standard deduction + $700 personal exemptions). The object is
+# named `full_2a` here so the name does not misstate what it holds.
 full_2a   <- readr::read_csv(here("data/clean/income_tax_taxsim.csv"), show_col_types = FALSE)
-handcoded <- ohio_income_tax_taxunits(persons) |> select(tu, hc_tax = income_tax)
+handcoded <- wisconsin_income_tax_taxunits(persons) |> select(tu, hc_tax = income_tax)
 
 # Rank and take rate denominators on tu_income_dist — full per-unit PUMS income
 # INCLUDING Social Security (the complete, doc-consistent income concept). Using
@@ -1211,8 +1202,8 @@ joined <- full_2a |>
 cmp <- joined |>
   group_by(grp) |>
   summarise(
-    `Simple hand-code (no personal exemption)` = weighted.mean(hc_tax, wgtp, na.rm = TRUE) / weighted.mean(tu_income_dist, wgtp),
-    `2a full baseline (TY2026 statute)`        = weighted.mean(ohio_income_tax, wgtp, na.rm = TRUE) / weighted.mean(tu_income_dist, wgtp),
+    `Simple hand-code (tax units)`      = weighted.mean(hc_tax, wgtp, na.rm = TRUE) / weighted.mean(tu_income_dist, wgtp),
+    `2a full baseline (TY2025 statute)` = weighted.mean(wi_income_tax, wgtp, na.rm = TRUE) / weighted.mean(tu_income_dist, wgtp),
     .groups = "drop") |>
   tidyr::pivot_longer(-grp, names_to = "method", values_to = "rate")
 readr::write_csv(cmp, here("05_output/tables/income_tax_handcoded_vs_taxsim.csv"))
@@ -1221,9 +1212,9 @@ readr::write_csv(cmp, here("05_output/tables/income_tax_handcoded_vs_taxsim.csv"
 # prose below rather than hand-typed (additive to this chunk's existing
 # computation; does not change what is plotted).
 total_simple_b        <- sum(joined$hc_tax * joined$wgtp, na.rm = TRUE) / 1e9
-total_2a_b             <- sum(joined$ohio_income_tax * joined$wgtp, na.rm = TRUE) / 1e9
+total_2a_b             <- sum(joined$wi_income_tax * joined$wgtp, na.rm = TRUE) / 1e9
 pct_diff_2a_vs_simple  <- (total_2a_b - total_simple_b) / total_simple_b
-d10_share_2a           <- sum(joined$ohio_income_tax[joined$grp == 10] * joined$wgtp[joined$grp == 10], na.rm = TRUE) / sum(joined$ohio_income_tax * joined$wgtp, na.rm = TRUE)
+d10_share_2a           <- sum(joined$wi_income_tax[joined$grp == 10] * joined$wgtp[joined$grp == 10], na.rm = TRUE) / sum(joined$wi_income_tax * joined$wgtp, na.rm = TRUE)
 d10_share_simple        <- sum(joined$hc_tax[joined$grp == 10] * joined$wgtp[joined$grp == 10], na.rm = TRUE) / sum(joined$hc_tax * joined$wgtp, na.rm = TRUE)
 
 p_ts <- cmp |>
@@ -1233,12 +1224,12 @@ p_ts <- cmp |>
   geom_text(aes(label = percent(rate, accuracy = 0.1)),
             position = position_dodge(0.8), vjust = -0.3, size = 2.6, color = "#404040") +
   scale_y_continuous(labels = percent, expand = expansion(mult = c(0, 0.12))) +
-  scale_fill_manual(values = c("Simple hand-code (no personal exemption)" = "#BFBFBF",
-                               "2a full baseline (TY2026 statute)" = swank_palette[5]), name = NULL) +
+  scale_fill_manual(values = c("Simple hand-code (tax units)" = "#BFBFBF",
+                               "2a full baseline (TY2025 statute)" = swank_palette[5]), name = NULL) +
   labs(title = "The full statutory construction changes the level, not the shape",
-       subtitle = "Ohio income tax as a share of income, by tax-unit income decile (constant 2024$)",
+       subtitle = "Wisconsin income tax as a share of income, by tax-unit income decile (constant 2024$)",
        x = "Tax-unit income decile (weighted)", y = NULL,
-       caption = "Source: ACS 2020-2024 PUMS. Both series are hand-coded TY2026 Ohio law (02_code/2a no longer calls TAXSIM); the difference is construction, not law year -- simple flat rate vs. 2a's full bracket + exemption schedule.") +
+       caption = "Source: ACS 2020-2024 PUMS. Both series are hand-coded TY2025 Wisconsin law; the difference is construction -- the simple cut sums raw PUMS person income, while 2a maps AGI field-by-field (wage/interest/pension floored at zero) on real filing units.") +
   theme_swank() +
   theme(legend.position = "top", panel.grid.major.x = element_blank())
 p_ts
@@ -1246,13 +1237,13 @@ ggsave(file.path(fig_dir, "fig24_taxsim_vs_handcoded.png"),
        p_ts, width = 9, height = 5, dpi = 300, bg = "white")
 ```
 
-Three results worth keeping. First, the full construction raises the total: 2a's weighted statewide baseline is `r dollar(total_2a_b, accuracy = 0.1, suffix = "B")`, `r percent(abs(pct_diff_2a_vs_simple), accuracy = 1)` `r if (pct_diff_2a_vs_simple > 0) "higher" else "lower"` than the simple hand-code's `r dollar(total_simple_b, accuracy = 0.1, suffix = "B")` (fig23) — the \$332 flat base, owed by every unit above the zero-bracket, outweighs what the personal exemption saves them, and the result sits closer to the `r dollar(collections$collections_b[collections$tax_type == "Individual income tax"], accuracy = 0.1, suffix = "B")` TY2024 administrative total (ODT Table Y-1) than the simple construction does. Second, the shape is progressive under either construction, but concentration at the top is somewhat lower under the full construction: the top decile holds `r percent(d10_share_2a, accuracy = 1)` of 2a's total against `r percent(d10_share_simple, accuracy = 1)` under the simple hand-code, because the flat \$332 base carries relatively more weight in the middle of the distribution than a pure percentage-of-income tax would. One caveat on the bottom decile specifically: a small number of tax units with reported business losses rank into decile 1 by total PUMS income (`tu_income_dist`, which is loss-inclusive) while still owing a positive 2a liability on their floored wage/interest income — the same negative-income-bin artifact flagged for the property-tax figures above and for Part II's household-ranked income tables; read D1 here as elevated by that artifact, not as a precise rate. Third, neither hand-code captures the federal side of the tax code — the EITC, refundable child credits, or the federal SALT deduction — because ACS PUMS carries no itemization detail and Ohio's schedule has no federal-liability dependency to hand-code against. That gap is exactly why Part II's income-incidence engine (`02_code/3b-income-incidence.R`) makes a separate, narrow TAXSIM call for *federal* marginal rates alone (a documented 2023-law stable-structure proxy) rather than for anything on the Ohio side — the federal interaction motivates that one remaining TAXSIM call, not a TAXSIM run for Ohio.
+Three results worth keeping. First, the full construction raises the total: 2a's weighted statewide baseline is `r dollar(total_2a_b, accuracy = 0.1, suffix = "B")`, `r percent(abs(pct_diff_2a_vs_simple), accuracy = 1)` `r if (pct_diff_2a_vs_simple > 0) "higher" else "lower"` than the simple hand-code's `r dollar(total_simple_b, accuracy = 0.1, suffix = "B")` (fig23) — mapping Wisconsin AGI field by field floors wage, interest, and pension income at zero per person, so reported losses no longer erode the base the way they do in the simple cut's raw summed PUMS income, and the result sits closer to the `r dollar(collections_wi$collections_b[collections_wi$tax_type == "Individual Income"], accuracy = 0.1, suffix = "B")` administrative individual-income-tax total than the simple construction does. Second, the shape is progressive under either construction, but concentration at the top is somewhat lower under the full construction: the top decile holds `r percent(d10_share_2a, accuracy = 1)` of 2a's total against `r percent(d10_share_simple, accuracy = 1)` under the simple hand-code, because flooring the AGI components lifts some middle-decile liability that the loss-inclusive simple measure had washed out. One caveat on the bottom decile specifically: a small number of tax units with reported business losses rank into decile 1 by total PUMS income (`tu_income_dist`, which is loss-inclusive) while still owing a positive 2a liability on their floored wage/interest income — the same negative-income-bin artifact flagged for the property-tax figures above and for Part II's household-ranked income tables; read D1 here as elevated by that artifact, not as a precise rate. Third, neither hand-code captures the federal side of the tax code — the EITC, refundable child credits, or the federal SALT deduction — because ACS PUMS carries no itemization detail; the federal interaction is a documented scope limit of this baseline, not something the hand-code silently approximates.
 
-**Anchor:** for the rest of the analysis, including every scenario in Part II, we treat **2a's hand-coded TY2026 Ohio law** as the income-tax baseline; TAXSIM under 2023 law is used only for federal marginal rates in `3b`. Replacement scenarios solve against this baseline and report the *change* in burden against it (`05_output/tables/winners_losers_by_decile_tenure.csv`, Part II).
+**Anchor:** for the rest of the analysis, including every scenario in Part II, we treat **2a's hand-coded TY2025 Wisconsin law** as the income-tax baseline. Replacement scenarios solve against this baseline and report the *change* in burden against it (Part II).
 
 ## Where the replacement-tax incidence stands now
 
-The baseline built above — property-tax incidence by decile and tenure, and the income-tax construction that closes with 2a's anchored TY2026 schedule — is no longer waiting on data. Three of the four legs the replacement model needs are built. Sales-tax incidence draws on the rebuilt Consumer Expenditure Survey chain (`02_code/1d`-`1g`, `1m`; figures 25-27 below), which turns these income-only PUMS households into a full consumption profile and feeds `02_code/3c-sales-incidence.R`. State income-tax incidence uses 2a's hand-coded TY2026 baseline (above), which feeds `02_code/3b-income-incidence.R`'s household-ranked microsim. Both incidence engines, together with the Layer-1 replacement-rate solver and the winners/losers tables, are stood up in the scenario matrix — see `tax_scenarios_model.qmd` (Part II) for the full model, its sensitivity program, and its reconciliation trail.
+The baseline built above — property-tax incidence by decile and tenure, and the income-tax construction that closes with 2a's anchored TY2025 schedule — is no longer waiting on data. Three of the four legs the replacement model needs are built. Sales-tax incidence draws on the rebuilt Consumer Expenditure Survey chain (`02_code/1d`-`1g`, `1m`; figures 25-27 below), which turns these income-only PUMS households into a full consumption profile and feeds `02_code/3c-sales-incidence.R`. State income-tax incidence uses 2a's hand-coded TY2025 baseline (above), which feeds `02_code/3b-income-incidence.R`'s household-ranked microsim. Both incidence engines, together with the Layer-1 replacement-rate solver and the winners/losers tables, are stood up in the scenario matrix — see `tax_scenarios_model.qmd` (Part II) for the full model, its sensitivity program, and its reconciliation trail.
 
 Local income tax is the one leg that remains a genuine household-incidence blocker, not a data gap the pipeline can close by pulling another file. Municipal income tax is levied where a person **works**; school-district income tax where they **live, by district**. PUMS resolves only to **PUMA**, which is neither a municipality nor a school district, so neither tax can be assigned to a household without finer geography than the data provide. Local income tax therefore stays an aggregate (collections) story — mapped in section iii above — rather than a household-incidence one, in this model.
 
@@ -1372,4 +1363,3 @@ p_income_tax_burden_2025
 ggsave(file.path(fig_dir, "fig27_cex_sales_tax_burden_by_income_group.png"),
        p_income_tax_burden_2025, width = 8, height = 5, dpi = 300, bg = "white")
 ```
-

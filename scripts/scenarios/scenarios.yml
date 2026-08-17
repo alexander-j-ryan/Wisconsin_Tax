@@ -1,0 +1,52 @@
+# ==========================================================================
+# Wisconsin Property Tax Analysis -- scenario / current-law parameters
+# ==========================================================================
+# Income-tax BASELINE subset. This file is adapted from the Ohio project's
+# 02_code/scenarios/scenarios.yml, reduced to the income-tax current-law
+# parameters that scripts/2a-income-tax-baseline.R reads. (The Ohio original
+# also carried the sales-tax and S01-S08 replacement-scenario matrix used by
+# Part II; those are not part of this Wisconsin income-tax migration and are
+# omitted until Part II is ported.)
+#
+# SOURCE: Wisconsin DOR TY2025 individual income tax rate schedule (single/HoH
+# and married-filing-jointly columns) and Form 1 instructions; standard-
+# deduction and bracket figures are inflation-indexed annually and these are
+# the most recently published (TY2025) values. Wisconsin publishes MARGINAL
+# rates, so each bracket's cumulative `base` (liability at the bracket floor)
+# telescopes exactly from the rates below it -- listed explicitly here in the
+# same over/base/rate shape apply_bracket_schedule() consumes.
+# ==========================================================================
+
+current_law:
+
+  # Tax year the income-tax constants below describe.
+  state_income_year: 2025
+
+  # --- Progressive bracket schedule, by filing status --------------------
+  # `over` = lower bound of the bracket (open on the left: income exactly on a
+  # boundary stays in the lower bracket); `base` = tax owed at that floor;
+  # `rate` = marginal rate applied to income above `over`.
+  # Single / head of household / estates / trusts:
+  state_income_brackets_2025_single:
+    - {over: 0,      base: 0.00,     rate: 0.0350}
+    - {over: 14680,  base: 513.80,   rate: 0.0440}
+    - {over: 50480,  base: 2089.00,  rate: 0.0530}
+    - {over: 323290, base: 16547.93, rate: 0.0765}
+  # Married filing jointly:
+  state_income_brackets_2025_mfj:
+    - {over: 0,      base: 0.00,     rate: 0.0350}
+    - {over: 19580,  base: 685.30,   rate: 0.0440}
+    - {over: 67300,  base: 2784.98,  rate: 0.0530}
+    - {over: 431060, base: 22064.26, rate: 0.0765}
+
+  # --- Income-phased standard deduction, by filing status ----------------
+  # Holds at `max` up to `start` of income, then falls linearly to $0 at
+  # `zero`. (single slope ~= 12.0%/$; mfj slope ~= 19.78%/$.)
+  state_income_standard_deduction_2025:
+    single: {max: 13560, start: 19549, zero: 132549}
+    mfj:    {max: 25110, start: 28209, zero: 155169}
+
+  # --- Personal exemption ------------------------------------------------
+  # Flat $700 per exemption (self + spouse + dependents). Unlike Ohio's
+  # MAGI-tiered exemption, Wisconsin's is not income-tiered and has no cutoff.
+  state_income_exemption_per_person: 700

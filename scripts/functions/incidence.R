@@ -13,12 +13,11 @@
 #      units from ACS PUMS person records, shared by
 #      02_code/2a-income-tax-baseline.R and 02_code/3b-income-incidence.R so both
 #      callers submit identical units to TAXSIM.
-#   5) Defines ohio_income_tax_taxsim_units() — the hand-coded TY2026 Ohio
-#      current-law schedule (ORC 5747.02/5747.025) at the SAME taxsim-unit
-#      grain build_taxsim_units() returns, replacing the TAXSIM call
-#      02_code/2a and 02_code/3b previously used for Ohio liability/marginal
-#      rate (2026-07-15 income-handcode plan; TAXSIM stays in the loop only
-#      for federal marginal rates, in 02_code/3b).
+#   5) Defines wisconsin_income_tax_taxsim_units() — the hand-coded TY2025
+#      Wisconsin current-law schedule (progressive brackets + phased standard
+#      deduction + $700 personal exemption, by filing status) at the SAME
+#      taxsim-unit grain build_taxsim_units() returns, used by
+#      scripts/2a-income-tax-baseline.R for WI liability/marginal rate.
 # INPUTS:  None (defines functions only). Callers pass a PUMS households or
 #          persons tibble; see each function's Roxygen block for required
 #          columns.
@@ -29,10 +28,10 @@
 #          comments which functions it uses. Full export list:
 #          wtd_quantile_bins(), property_tax_incidence(), compute_p2r(),
 #          owner_effective_rate(), owner_relief_gross_up(), add_ptax_burden(),
-#          incidence_by_who(), ohio_income_tax_units(), build_tax_units(),
-#          ohio_income_tax_taxunits(), build_taxsim_units(),
-#          apply_bracket_schedule(), ohio_exemption_per_person(),
-#          ohio_income_tax_taxsim_units()).
+#          incidence_by_who(), wisconsin_income_tax_units(), build_tax_units(),
+#          wisconsin_income_tax_taxunits(), build_taxsim_units(),
+#          apply_bracket_schedule(),
+#          wisconsin_income_tax_taxsim_units()).
 # NOTES:   Weighted by the housing weight WGTP (`wgtp`) throughout. Effective
 #          rate is reported as the AGGREGATE measure — weighted total tax /
 #          weighted total income within a group. This is the Minnesota-DOR/
@@ -290,44 +289,49 @@ incidence_by_who <- function(pums, who = c("owner", "renter", "combined"), n_gro
 }
 
 ############################################################################
-# III. HAND-CODED OHIO INCOME TAX (simple flat-rate construction)
+# III. HAND-CODED WISCONSIN INCOME TAX (simple household construction)
 ############################################################################
 # CRUDE first move, kept as Part I's simple descriptive cut (see
 # tax_collections_figures.qmd's "first move toward income-tax incidence"):
-#   * Tax unit = household (ignores multiple filing units within a household).
-#   * Ohio taxable income proxied as household income MINUS Social Security /
-#     SSI / public assistance (Ohio exempts these). Ignores all other Ohio
-#     adjustments, deductions, exemptions, and credits -> overstates the base.
-#   * Applies the TY2026 flat schedule: `rate` on income above `exempt`.
-#   * No federal interaction. 02_code/2a-income-tax-baseline.R hand-codes the
-#     full TY2026 statute (personal exemptions + the $332 base amount) as
-#     the anchored baseline; TAXSIM cannot compute any law year after 2023
-#     and is retained only in 02_code/3b-income-incidence.R, for FEDERAL
-#     marginal rates as a documented 2023-law stable-structure proxy -- it
-#     never computes Ohio-side liability anywhere in this project.
-# Validation: on the 2020-2024 PUMS this totals ~$9.0B (was ~$8.7B on
-# 2019-2023, updated 2026-07-20 ACS-vintage migration), close to Ohio's
-# actual ~$9B individual income tax -> the crude proxy is in the right
-# ballpark.
+#   * Tax unit = household, treated as a SINGLE filer (ignores multiple
+#     filing units within a household; single/HoH brackets and standard
+#     deduction throughout).
+#   * Wisconsin taxable income proxied as household income MINUS Social
+#     Security / SSI / public assistance (Wisconsin exempts Social Security).
+#     A single standard deduction and one $700 personal exemption are netted
+#     off -- deliberately coarser than the per-filer treatment in
+#     wisconsin_income_tax_taxunits() below, which splits the household into
+#     real filing units.
+#   * Applies the TY2025 progressive bracket schedule (see wi_tax_params).
+#   * No federal interaction. scripts/2a-income-tax-baseline.R hand-codes the
+#     full statutory construction at the real tax-unit grain (filing-status
+#     brackets + phased standard deduction + per-person exemptions) as the
+#     anchored baseline.
+# Because it collapses every household to one single filer, this construction
+# UNDERSTATES the exemptions/standard deductions a multi-filer household would
+# actually claim -> it is a coarse upper cut, refined by the two constructions
+# that follow it in the document.
 
-#' Build household tax units and a hand-coded Ohio income tax.
-#' @param persons Tibble from pums_persons_oh.parquet (constant-$ income cols).
-#' @param rate Flat marginal rate above the exemption (TY2026 = 0.0275).
-#' @param exempt No-tax threshold (TY2026 ~ 26050).
-#' @return Tibble: serialno, wgtp, hh_income, oh_taxable, income_tax.
-ohio_income_tax_units <- function(persons, rate = 0.0275, exempt = 26050) {
+#' Build household tax units and a hand-coded Wisconsin income tax, treating
+#' each household as a single filer.
+#' @param persons Tibble from pums_persons_wi.parquet (constant-$ income cols).
+#' @param params TY2025 Wisconsin schedule (defaults to wi_tax_params).
+#' @return Tibble: serialno, wgtp, hh_income, wi_taxable, income_tax.
+wisconsin_income_tax_units <- function(persons, params = wi_tax_params) {
   persons |>
     dplyr::group_by(serialno) |>
     dplyr::summarise(
       wgtp      = dplyr::first(wgtp),
       hh_income = dplyr::first(hh_income),                       # HINCP (household)
-      nontax    = sum(soc_sec, ssi, pub_assist, na.rm = TRUE),    # Ohio-exempt income
+      nontax    = sum(soc_sec, ssi, pub_assist, na.rm = TRUE),    # WI-exempt income (Social Security)
       .groups   = "drop"
     ) |>
     dplyr::filter(wgtp > 0) |>
     dplyr::mutate(
-      oh_taxable = pmax(hh_income - nontax, 0),
-      income_tax = rate * pmax(oh_taxable - exempt, 0)
+      wi_agi     = pmax(hh_income - nontax, 0),
+      wi_taxable = pmax(wi_agi - .wi_std_deduction(wi_agi, params$sd_single) -
+                          params$exemption_per_person, 0),        # single filer: one exemption
+      income_tax = apply_bracket_schedule(wi_taxable, params$brackets_single)$tax
     )
 }
 
@@ -340,8 +344,11 @@ ohio_income_tax_units <- function(persons, rate = 0.0275, exempt = 26050) {
 #' Each unit inherits the household weight WGTP. This splits multi-adult
 #' households so each filing unit gets its own exemption. (Next step: TAXSIM
 #' on these units, see 02_code/2a-income-tax-baseline.R.)
-#' @param persons Tibble from pums_persons_oh.parquet.
-#' @return Tibble: tu (unit id), serialno, wgtp, tu_income, exempt.
+#' @param persons Tibble from pums_persons_wi.parquet.
+#' @return Tibble: tu (unit id), serialno, wgtp, tu_income, exempt, mfj,
+#'   n_exempt. `mfj` flags units with a married spouse present (they file
+#'   jointly); `n_exempt` is the person count in the unit (self + spouse +
+#'   dependents), i.e. the number of personal exemptions the unit may claim.
 build_tax_units <- function(persons) {
   persons |>
     dplyr::mutate(
@@ -350,6 +357,7 @@ build_tax_units <- function(persons) {
       in_hh_unit = rel %in% c("20", "21", "23") | age < 18,
       tu = dplyr::if_else(in_hh_unit, paste0(serialno, "_H"),
                           paste0(serialno, "_", sporder)),
+      is_spouse = rel %in% c("21", "23"),                  # married spouse of householder
       exempt = suppressWarnings(as.numeric(soc_sec)) +
                suppressWarnings(as.numeric(ssi)) +
                suppressWarnings(as.numeric(pub_assist)),
@@ -361,22 +369,75 @@ build_tax_units <- function(persons) {
       wgtp      = dplyr::first(wgtp),
       tu_income = sum(person_income, na.rm = TRUE),
       exempt    = sum(exempt, na.rm = TRUE),
+      mfj       = any(is_spouse),               # a spouse present -> married filing jointly
+      n_exempt  = dplyr::n(),                    # one personal exemption per person in the unit
       .groups   = "drop"
     ) |>
     dplyr::filter(wgtp > 0)
 }
 
-#' Hand-coded Ohio income tax on REAL tax units (see build_tax_units()).
-#' @param persons Tibble from pums_persons_oh.parquet.
-#' @param rate Flat marginal rate above the exemption (TY2026 = 0.0275).
-#' @param exempt_thr No-tax threshold (TY2026 ~ 26050).
-#' @return build_tax_units() output plus oh_taxable, income_tax.
-ohio_income_tax_taxunits <- function(persons, rate = 0.0275, exempt_thr = 26050) {
-  build_tax_units(persons) |>
+#' TY2025 Wisconsin individual income tax schedule -- marginal brackets by
+#' filing status, the income-phased standard deduction, and the flat $700
+#' per-exemption personal exemption. Source: Wisconsin DOR TY2025 tax-rate
+#' schedule (single/HoH and married-filing-jointly columns) and Form 1
+#' instructions; every figure is inflation-indexed annually and these are the
+#' most recently published (TY2025) values. Wisconsin publishes MARGINAL
+#' rates, so the cumulative `base` at each bracket floor telescopes exactly
+#' from the rates below it -- derived here (see .wi_brackets) rather than
+#' hand-typed, unlike Ohio's separately-indexed published base amounts.
+.wi_brackets <- function(cuts, rates) {
+  base <- c(0, cumsum(rates[-length(rates)] * diff(cuts)))
+  data.frame(over = cuts, base = base, rate = rates)
+}
+
+wi_tax_params <- list(
+  brackets_single = .wi_brackets(c(0, 14680, 50480, 323290),
+                                 c(0.0350, 0.0440, 0.0530, 0.0765)),
+  brackets_mfj    = .wi_brackets(c(0, 19580, 67300, 431060),
+                                 c(0.0350, 0.0440, 0.0530, 0.0765)),
+  # Standard deduction: max amount, income where phase-out begins, income at $0.
+  sd_single = list(max = 13560, start = 19549, zero = 132549),  # ~ -12.0%/$ over start
+  sd_mfj    = list(max = 25110, start = 28209, zero = 155169),  # ~ -19.78%/$ over start
+  exemption_per_person = 700
+)
+
+#' Wisconsin income-phased standard deduction, vectorized. Holds at `p$max` up
+#' to `p$start` of income, then falls linearly to $0 at `p$zero`.
+.wi_std_deduction <- function(income, p) {
+  slope <- p$max / (p$zero - p$start)
+  pmax(pmin(p$max, p$max - slope * (pmax(income, 0) - p$start)), 0)
+}
+
+#' Hand-coded Wisconsin income tax on REAL tax units (see build_tax_units()).
+#' Applies the TY2025 progressive bracket schedule by filing status, after the
+#' income-phased standard deduction and the $700-per-person personal exemption.
+#' Social Security / SSI / public assistance (build_tax_units()'s `exempt`) are
+#' removed first, matching Wisconsin's exclusion of Social Security from taxable
+#' income. Units with a married spouse present get the wider MFJ brackets and
+#' standard deduction; every other unit is taxed as single/HoH. The bracket
+#' math reuses apply_bracket_schedule() -- the same engine 2a's statutory
+#' construction uses -- so this file keeps one bracket implementation, not two.
+#' @param persons Tibble from the PUMS persons parquet.
+#' @param params TY2025 Wisconsin schedule (defaults to wi_tax_params).
+#' @return build_tax_units() output plus wi_agi, std_deduction, wi_taxable,
+#'   income_tax.
+wisconsin_income_tax_taxunits <- function(persons, params = wi_tax_params) {
+  units <- build_tax_units(persons) |>
     dplyr::mutate(
-      oh_taxable = pmax(tu_income - exempt, 0),
-      income_tax = rate * pmax(oh_taxable - exempt_thr, 0)
+      wi_agi        = pmax(tu_income - exempt, 0),                 # SS/SSI/assistance excluded
+      std_deduction = dplyr::if_else(mfj,
+                        .wi_std_deduction(wi_agi, params$sd_mfj),
+                        .wi_std_deduction(wi_agi, params$sd_single)),
+      wi_taxable    = pmax(wi_agi - std_deduction -
+                             params$exemption_per_person * n_exempt, 0)
     )
+
+  # apply_bracket_schedule() takes a single schedule; evaluate both and select
+  # each unit's liability by filing status.
+  tax_single <- apply_bracket_schedule(units$wi_taxable, params$brackets_single)$tax
+  tax_mfj    <- apply_bracket_schedule(units$wi_taxable, params$brackets_mfj)$tax
+
+  dplyr::mutate(units, income_tax = dplyr::if_else(mfj, tax_mfj, tax_single))
 }
 
 ############################################################################
@@ -476,7 +537,7 @@ build_taxsim_units <- function(persons, year) {
     dplyr::mutate(
       taxsimid = dplyr::row_number(),
       year     = year,
-      state    = "OH",
+      state    = "WI",
       mstat    = dplyr::if_else(!is.na(sage), "married, jointly", "single"),
       sage     = dplyr::coalesce(sage, 0),
       depx     = dplyr::coalesce(depx, 0L),
@@ -492,45 +553,40 @@ build_taxsim_units <- function(persons, year) {
 }
 
 ############################################################################
-# V. HAND-CODED TY2026 OHIO SCHEDULE AT THE TAXSIM-UNIT GRAIN
+# V. HAND-CODED TY2025 WISCONSIN SCHEDULE AT THE TAXSIM-UNIT GRAIN
 ############################################################################
-# Ohio's income tax stopped being TAXSIM's value-add once the state moved
-# to this near-flat schedule -- and the installed usincometaxes 0.7.1
-# cannot compute any law year after 2023 at all (verified 2026-07-15: 2024-
-# 2027 all error "year must be between 1960 and 2023"; 0.7.1 is the latest
-# CRAN version). 02_code/2a and 02_code/3b hand-code Ohio current-law liability
-# here instead, and keep TAXSIM only for federal marginal rates (2026-07-
-# 15 income-handcode plan). TY2026 IS a single flat 2.75% bracket -- $0 at
-# or below $26,050, then $332.00 plus 2.75% of the excess above $26,050,
-# no second bracket -- so it is not a bare rate x income multiply (the
-# $332 base and the $26,050 zero-bracket both matter) but it is genuinely
-# flat above the threshold (ORC 5747.02, HB 96). CORRECTED 2026-07-15: an
-# earlier version of this schedule used a stale two-bracket schedule (a
-# $342 base plus a second 3.125% bracket above $100,000) under the TY2026
-# label; the 3.125% tier is TY2025's, and the $342 base was a stale ODT
-# worksheet's figure -- TY2025's actual statutory base is $360.69. See
-# scenarios.yml current_law$state_income_brackets_2026 for the sourced,
-# corrected bracket table and the full root-cause note.
+# Wisconsin's income tax is hand-coded here (the installed usincometaxes
+# 0.7.1 cannot compute any law year after 2023 at all; 0.7.1 is the latest
+# CRAN version). scripts/2a-income-tax-baseline.R computes current-law WI
+# liability here; TAXSIM, if reintroduced, would be kept only for federal
+# marginal rates. TY2025 Wisconsin law is a genuinely progressive FOUR-bracket
+# schedule (3.50 / 4.40 / 5.30 / 7.65%) whose bracket thresholds AND the
+# income-phased standard deduction differ by filing status (single/HoH vs.
+# married-filing-jointly), with a flat $700-per-exemption personal exemption.
+# Because Wisconsin publishes MARGINAL rates, the cumulative `base` at each
+# bracket floor telescopes exactly from the rates below it (derived in
+# .wi_brackets(), Section III) -- unlike Ohio's separately-indexed published
+# base amounts. Sourced constants live in scripts/scenarios/scenarios.yml
+# (current_law$state_income_*), mirrored by wi_tax_params (Section III) for
+# the simple hand-code functions.
 
 #' Apply a "base + rate x (excess over threshold)" bracket schedule.
 #'
-#' ODT's own table is worded "More than $X -- Up to $Y", i.e. bracket
-#' boundaries are OPEN on the left: income of exactly $26,050 is still in
-#' the 0% bracket (it is not "more than $26,050"), and only income strictly
-#' above the threshold moves up. `findInterval(..., left.open = TRUE)`
-#' matches that convention; the default (closed-on-left) would wrongly tax
-#' a unit sitting exactly on a bracket boundary at the higher rate.
+#' Wisconsin's rate schedule is worded "$0 -- $14,680 ... $14,680 --
+#' $50,480 ...", i.e. bracket boundaries are OPEN on the left: income of
+#' exactly $14,680 stays in the lower bracket, and only income strictly above
+#' the threshold moves up. `findInterval(..., left.open = TRUE)` matches that
+#' convention; the default (closed-on-left) would wrongly tax a unit sitting
+#' exactly on a bracket boundary at the higher rate.
 #'
 #' The liability at income x, under the bracket with the largest `over`
-#' strictly below x, is `base + rate * (x - over)`. This is the exact shape
-#' ODT publishes its own rate tables in (see scenarios.yml), so brackets
-#' are used as published rather than re-derived from the marginal rates
-#' alone -- the published base amounts do not perfectly telescope across
-#' brackets (ODT indexes each bracket's own base and threshold separately
-#' each August), and matching the published table exactly is more
-#' defensible than a "cleaner" reconstruction.
+#' strictly below x, is `base + rate * (x - over)`. Because Wisconsin
+#' publishes marginal rates, `base` telescopes exactly from the rates below
+#' it (see .wi_brackets(), Section III). The function is schedule-agnostic:
+#' pass whichever filing-status bracket table applies.
 #'
-#' @param taxable_income Numeric vector, already net of exemptions.
+#' @param taxable_income Numeric vector, already net of standard deduction
+#'   and exemptions.
 #' @param brackets Data frame with columns `over`, `base`, `rate`, one row
 #'   per bracket (any order; sorted internally).
 #' @return List with `tax` and `mtr` numeric vectors, aligned to
@@ -542,80 +598,61 @@ apply_bracket_schedule <- function(taxable_income, brackets) {
   list(tax = pmax(tax, 0), mtr = brackets$rate[bracket_idx])
 }
 
-#' Ohio's MAGI-tiered personal/dependent exemption, per exemption claimed.
+#' Hand-coded TY2025 Wisconsin income tax, at the TAXSIM-unit grain.
 #'
-#' ORC 5747.025: the dollar exemption amount (multiplied by the taxpayer's
-#' own exemption count -- self + spouse + dependents) depends on the
-#' taxpayer's OWN modified adjusted gross income tier, not on which
-#' dependent is being counted. AT OR ABOVE `magi_cutoff`, all exemptions are
-#' eliminated (HB 96, scenarios.yml's sourced "at or above" wording) -- not
-#' just reduced to the lowest tier. Tiers are worded "MAGI <= $40,000" /
-#' "> $40,000 but <= $80,000" / "> $80,000" -- open on the left at each
-#' boundary, same convention (and same left.open = TRUE fix) as
-#' apply_bracket_schedule() above. `magi_cutoff` is a DIFFERENT (closed)
-#' boundary direction from those tier lookups -- don't "simplify" the `>=`
-#' below to `>` to match them; it would silently reintroduce a bug.
-#'
-#' @param magi Numeric vector, the MAGI used to pick a tier.
-#' @param exemption_tiers Data frame with columns `magi_over`, `amount`,
-#'   one row per tier (any order; sorted internally).
-#' @param magi_cutoff MAGI at or above which the per-exemption amount is 0.
-#' @return Numeric vector, dollars per exemption, aligned to `magi`.
-ohio_exemption_per_person <- function(magi, exemption_tiers, magi_cutoff) {
-  exemption_tiers <- exemption_tiers[order(exemption_tiers$magi_over), ]
-  tier_idx <- pmax(findInterval(magi, exemption_tiers$magi_over, left.open = TRUE), 1L)
-  dplyr::if_else(magi >= magi_cutoff, 0, exemption_tiers$amount[tier_idx])
-}
-
-#' Hand-coded TY2026 Ohio nonbusiness income tax, at the TAXSIM-unit grain.
-#'
-#' Computes current-law Ohio liability and marginal rate on the SAME units
-#' build_taxsim_units() returns, so 02_code/2a and 02_code/3b can join this
-#' directly by `taxsimid` instead of re-running TAXSIM for the Ohio side.
-#' Ohio AGI is approximated the same way 02_code/2a's `tu_income` already is --
-#' wages + self-employment + interest + pensions + other, excluding Social
-#' Security (`gssi`), which Ohio exempts from taxable income. MAGI for the
-#' exemption tier is approximated by that same pre-exemption AGI measure
-#' (PUMS carries no Ohio addback detail to compute true MAGI) -- a
-#' documented approximation, not a coding shortcut, matching this file's
-#' existing TAXSIM measurement-gap notes (02_code/2a-income-tax-baseline.R
-#' header). Taxable income nets the MAGI-tiered exemption off Ohio AGI
-#' BEFORE applying the bracket schedule, matching the post-exemption base
-#' semantics TAXSIM's `v36_state_taxable_income` used previously (2026-07-
-#' 15 income-handcode plan, Section 4) -- preserved here for continuity of
-#' meaning, not because TAXSIM is still in the loop for this side.
+#' Computes current-law Wisconsin liability and marginal rate on the SAME
+#' units build_taxsim_units() returns, so scripts/2a can join this directly
+#' by `taxsimid`. This is the FULL statutory construction that anchors the
+#' income-tax baseline; wisconsin_income_tax_taxunits() (Section III) is the
+#' simpler cut it refines. Wisconsin AGI is approximated as wages +
+#' self-employment + interest + pensions + other, excluding Social Security
+#' (`gssi`), which Wisconsin exempts -- a documented PUMS measurement
+#' approximation (no dividends/capital-gains/itemization detail), not a
+#' coding shortcut. Filing status comes from `mstat`: married-jointly units
+#' get the wider MFJ brackets and standard deduction, everyone else single/HoH.
+#' Taxable income nets the income-phased standard deduction and the flat
+#' $700-per-exemption personal exemption off WI AGI BEFORE the bracket
+#' schedule. The standard-deduction phase-out uses WI AGI as its income base
+#' (the same pre-deduction measure), a documented approximation of the
+#' statutory household-income basis.
 #'
 #' @param units Tibble from build_taxsim_units(): `taxsimid`, `mstat`,
 #'   `depx`, `pwages`, `swages`, `psemp`, `ssemp`, `intrec`, `pensions`,
-#'   `nonprop` (`gssi` intentionally excluded -- Ohio-exempt).
-#' @param brackets Data frame with columns `over`, `base`, `rate`
-#'   (scenarios.yml `current_law$state_income_brackets_2026`).
-#' @param exemption_tiers Data frame with columns `magi_over`, `amount`
-#'   (scenarios.yml `current_law$state_income_exemption_magi_tiers`).
-#' @param exemption_magi_cutoff MAGI at/above which exemptions are 0
-#'   (scenarios.yml `current_law$state_income_exemption_magi_cutoff`).
-#' @return Tibble: `taxsimid`, `oh_agi`, `n_exemptions`,
-#'   `oh_exemption_amount`, `oh_taxable_income`, `oh_tax_current`,
-#'   `oh_mtr_current`.
-ohio_income_tax_taxsim_units <- function(units, brackets, exemption_tiers, exemption_magi_cutoff) {
+#'   `nonprop` (`gssi` intentionally excluded -- WI-exempt).
+#' @param params TY2025 Wisconsin schedule with `brackets_single`,
+#'   `brackets_mfj` (data frames of `over`/`base`/`rate`), `sd_single`,
+#'   `sd_mfj` (lists of `max`/`start`/`zero`), and `exemption_per_person`.
+#'   Defaults to wi_tax_params; scripts/2a builds an equivalent list from
+#'   scripts/scenarios/scenarios.yml.
+#' @return Tibble: `taxsimid`, `mfj`, `wi_agi`, `n_exemptions`,
+#'   `std_deduction`, `wi_exemption_amount`, `wi_taxable_income`,
+#'   `wi_tax_current`, `wi_mtr_current`.
+wisconsin_income_tax_taxsim_units <- function(units, params = wi_tax_params) {
   base <- units |>
     dplyr::transmute(
       taxsimid,
-      oh_agi = pwages + swages + psemp + ssemp + intrec + pensions + nonprop,
+      mfj    = mstat == "married, jointly",
+      wi_agi = pwages + swages + psemp + ssemp + intrec + pensions + nonprop,   # gssi (SS) excluded
       n_exemptions = dplyr::if_else(mstat == "married, jointly", 2L, 1L) + depx
     )
 
   base <- dplyr::mutate(
     base,
-    oh_exemption_amount = n_exemptions * ohio_exemption_per_person(oh_agi, exemption_tiers, exemption_magi_cutoff),
-    oh_taxable_income = pmax(oh_agi - oh_exemption_amount, 0)
+    std_deduction = dplyr::if_else(mfj,
+                      .wi_std_deduction(wi_agi, params$sd_mfj),
+                      .wi_std_deduction(wi_agi, params$sd_single)),
+    wi_exemption_amount = n_exemptions * params$exemption_per_person,
+    wi_taxable_income   = pmax(wi_agi - std_deduction - wi_exemption_amount, 0)
   )
 
-  schedule <- apply_bracket_schedule(base$oh_taxable_income, brackets)
+  # apply_bracket_schedule() takes a single schedule; evaluate both and pick
+  # each unit's liability / marginal rate by filing status.
+  sched_single <- apply_bracket_schedule(base$wi_taxable_income, params$brackets_single)
+  sched_mfj    <- apply_bracket_schedule(base$wi_taxable_income, params$brackets_mfj)
 
   dplyr::mutate(
     base,
-    oh_tax_current = schedule$tax,
-    oh_mtr_current = schedule$mtr
+    wi_tax_current = dplyr::if_else(mfj, sched_mfj$tax, sched_single$tax),
+    wi_mtr_current = dplyr::if_else(mfj, sched_mfj$mtr, sched_single$mtr)
   )
 }
