@@ -50,23 +50,25 @@ library(arrow)
 library(leaflet)
 library(here)
 
+
 source(here("scripts/functions/theme_swank.R"))     # theme_swank(), swank_palette
 # source(here("02_code/functions/read_odt.R"))         # read_odt(), keep_oh_counties()
 source(here("scripts/functions/viz_helpers.R"))      # theme_swank_map(), maps, scales
 source(here("scripts/functions/incidence.R"))        # property_tax_incidence(), wtd_quantile_bins()
 
 fig_dir <- here("output/figures")
+shp <- function(...) here("data/shapefiles", ...)
 
 # Geographies, reprojected to EPSG:3735 (area-correct Ohio). County cb file is
 # shoreline-clipped, so Lake Erie is not a polygon.
-wi_shp  <- st_read("C:/Users/aryan/Documents/GitHub/Wisconsin_Tax/data/shapefiles/CTV_Jan_2026_-4910906020273727621/CTV_Jan_2026.shp")
+wi_shp  <- st_read(shp("CTV_Jan_2026_-4910906020273727621/CTV_Jan_2026.shp"), quiet=TRUE)
 
 wi_city <- wi_shp %>% filter(CTV == "C") %>% st_transform(3735)
 wi_village <- wi_shp %>% filter(CTV == "V") %>% st_transform(3735)
 wi_township <- wi_shp %>% filter(CTV == "T") %>% st_transform(3735)
-wi_county <- st_read("C:/Users/aryan/Documents/GitHub/Wisconsin_Tax/data/shapefiles/cb_2018_us_county_500k/cb_2018_us_county_500k.shp") %>% filter(STATEFP == 55) %>% st_transform(3735)
+wi_county <- st_read(shp("cb_2018_us_county_500k/cb_2018_us_county_500k.shp"), quiet=TRUE) %>% filter(STATEFP == 55) %>% st_transform(3735)
 
-wi_sd        <- st_read("C:/Users/aryan/Documents/GitHub/Wisconsin_Tax/data/shapefiles/Wisconsin_School_Districts_-5132457395192808409/WI_School_Districts.shp") |> st_transform(3735)
+wi_sd        <- st_read(shp("Wisconsin_School_Districts_-5132457395192808409/WI_School_Districts.shp"), quiet=TRUE) |> st_transform(3735)
 
 # Wisconsin land polygon (counties are shoreline-clipped, so their union excludes Lake
 # Erie). Clip the other jurisdiction layers to it so the lake doesn't render.
@@ -87,27 +89,27 @@ This document builds the descriptive baseline that the replacement-scenario mode
 Ohio property tax is levied not by one government but by a stack of overlapping ones — counties, municipalities (cities and villages), townships, and school districts, plus special districts (libraries, parks, transit). A single parcel typically pays into several at once. That overlap is why "abolish the property tax" is hundreds of simultaneous fiscal events, not one.
 
 ```{r}
-# #| label: fig-jurisdictions
-# #| fig-cap: "Ohio's four overlapping kinds of property-taxing authority (Lake Erie removed)."
-# #| fig-width: 10
-# #| fig-height: 8
-# base_map <- function(layer, title)
-#   ggplot() +
-#     geom_sf(data = layer, fill = swank_palette[1], color = "white", linewidth = 0.08, alpha = 0.85) +
-#     geom_sf(data = wi_land, fill = NA, color = "grey30", linewidth = 0.3) +
-#     labs(title = title) + theme_swank_map(base_size = 11)
+#| label: fig-jurisdictions
+#| fig-cap: "Ohio's four overlapping kinds of property-taxing authority (Lake Erie removed)."
+#| fig-width: 10
+#| fig-height: 8
+base_map <- function(layer, title)
+  ggplot() +
+    geom_sf(data = layer, fill = swank_palette[1], color = "white", linewidth = 0.08, alpha = 0.85) +
+    geom_sf(data = wi_land, fill = NA, color = "grey30", linewidth = 0.3) +
+    labs(title = title) + theme_swank_map(base_size = 11)
 
-# p_jur <- (base_map(wi_county, "Counties") | base_map(wi_cities_l, paste(n_cities, "Municipalities"))) /
-#          base_map(wi_villages_l, paste(n_villages, "Villages")) | (base_map(wi_townships_l, paste(n_twp, "Townships")) | base_map(wi_sd_l, paste(n_sd, "School districts"))) +
-#   plot_annotation(
-#     title = "Four overlapping kinds of taxing authority levy Ohio's property tax",
-#     subtitle = "Each parcel sits inside a county, a municipality or township, and a school district at once",
-#     caption = "Source: Census TIGER (counties, school districts) + ODOT/OGRIP (Ohio_City_Boundaries.shp, Ohio_Township_Boundaries.shp).",
-#     theme = theme(plot.title = element_text(face = "bold", size = 15))
-#   )
-# p_jur
-# ggsave(file.path(fig_dir, "fig04_jurisdictions_small_multiples.png"),
-#        p_jur, width = 10, height = 8, dpi = 300, bg = "white")
+p_jur <- (base_map(wi_county, "Counties") | base_map(wi_cities_l, paste(n_cities, "Municipalities"))) /
+         base_map(wi_villages_l, paste(n_villages, "Villages")) | (base_map(wi_townships_l, paste(n_twp, "Townships")) | base_map(wi_sd_l, paste(n_sd, "School districts"))) +
+  plot_annotation(
+    title = "Four overlapping kinds of taxing authority levy Ohio's property tax",
+    subtitle = "Each parcel sits inside a county, a municipality or township, and a school district at once",
+    caption = "Source: Census TIGER (counties, school districts) + ODOT/OGRIP (Ohio_City_Boundaries.shp, Ohio_Township_Boundaries.shp).",
+    theme = theme(plot.title = element_text(face = "bold", size = 15))
+  )
+p_jur
+ggsave(file.path(fig_dir, "fig04_jurisdictions_small_multiples.png"),
+       p_jur, width = 10, height = 8, dpi = 300, bg = "white")
 ```
 
 School districts and townships tile the whole state; municipalities are islands of denser settlement. The model carries all four levels because replacement revenue routed to one level does not automatically reach the level that lost it — the heart of the Layer-2 redistribution problem.
@@ -1100,7 +1102,7 @@ compare <- hh_both |>
     `Income tax (current law)` = weighted.mean(income_tax,  wgtp, na.rm = TRUE) / weighted.mean(hh_income, wgtp),
     .groups = "drop") |>
   tidyr::pivot_longer(-grp, names_to = "tax", values_to = "rate")
-readr::write_csv(compare, here("05_output/tables/pums_property_vs_income_incidence.csv"))
+
 
 p_pvi <- compare |>
   mutate(decile = factor(grp, levels = 1:10, labels = paste0("D", 1:10))) |>
@@ -1206,7 +1208,7 @@ cmp <- joined |>
     `2a full baseline (TY2025 statute)` = weighted.mean(wi_income_tax, wgtp, na.rm = TRUE) / weighted.mean(tu_income_dist, wgtp),
     .groups = "drop") |>
   tidyr::pivot_longer(-grp, names_to = "method", values_to = "rate")
-readr::write_csv(cmp, here("05_output/tables/income_tax_handcoded_vs_taxsim.csv"))
+
 
 # Weighted statewide totals for the two constructions -- read live in the
 # prose below rather than hand-typed (additive to this chunk's existing
@@ -1249,7 +1251,7 @@ Local income tax is the one leg that remains a genuine household-incidence block
 
 # Analyzing CEX data for sales-tax incidence
 
-The Consumer Expenditure Survey (CEX) provides detailed information on household spending through its Diary and Interview surveys. While there is no representative Ohio-specific CEX sample, we use the national CEX and apply Ohio's tax rules through the taxability crosswalk (a Midwest-only robustness check and an Ohio-only audit diagnostic are planned; see `MODEL_OUTLINE_v02_behavioral.md`). The prep layer (rebuilt 2026-07-10) follows the official BLS calendar-year method: all five interview quarters contribute with months-in-scope weights, expenditures are assigned by reference month, and the two surveys are integrated UCC-by-UCC using the BLS integrated hierarchy (each UCC sourced from exactly one survey). The rebuilt means reproduce BLS published category totals within \~2% for every category except 2022 cash contributions (+17%, flagged in the audit for a published-value recheck) (audit: `05_output/audit/recon_cex_rebuild_vs_bls_published.csv`).
+The Consumer Expenditure Survey (CEX) provides detailed information on household spending through its Diary and Interview surveys. While there is no representative Ohio-specific CEX sample, we use the national CEX and apply Ohio's tax rules through the taxability crosswalk (a Midwest-only robustness check and an Ohio-only audit diagnostic are planned; see `MODEL_OUTLINE_v02_behavioral.md`). The prep layer (rebuilt 2026-07-10) follows the official BLS calendar-year method: all five interview quarters contribute with months-in-scope weights, expenditures are assigned by reference month, and the two surveys are integrated UCC-by-UCC using the BLS integrated hierarchy (each UCC sourced from exactly one survey). The rebuilt means reproduce BLS published category totals within \~2% for every category except 2022 cash contributions (+17%, flagged in the audit for a published-value recheck).
 
 The integrated expenditure universe has *675* UCC items to map to the *28* industrial NAICS-based classifications used by the Ohio tax dataset. The manually reviewed UCC-to-NAICS crosswalk (initially ChatGPT-assisted, then hand-checked) lives in the "UCC Mapping" sheet of `diagnostic_ucc_summary_with_naics_mapping.xlsx`; the merge script `1f-merge-ucc-manual.R` carries the manual selections forward whenever the prep layer is rebuilt. The crosswalk maps each UCC to an Ohio sales-tax NAICS bucket and flags UCCs that are non-taxable or not directly allocable to Ohio sales/use collections. Five buckets (notably food & beverage retail and gasoline stations, \~\$182M combined) currently have collections but no mapped CEX spending — an outlet-vs-product classification gap under review (`diagnostic_bucket_coverage.csv`).
 
@@ -1258,39 +1260,38 @@ The integrated expenditure universe has *675* UCC items to map to the *28* indus
 # Read early so the prose immediately below can inline the motor-vehicle
 # share live rather than hand-type it; the fig25 chunk below re-reads the
 # same file to build the plot.
-industry_total_early <- readr::read_csv(here("data/clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv"),
-                                        show_col_types = FALSE)
-motor_vehicle_share <- industry_total_early$allocated_tax_burden[industry_total_early$bucket_name == "Motor vehicle and parts dealers"] /
-  sum(industry_total_early$allocated_tax_burden, na.rm = TRUE)
+# industry_total_early <- readr::read_csv(here("data/clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv"),
+#                                         show_col_types = FALSE)
+# motor_vehicle_share <- industry_total_early$allocated_tax_burden[industry_total_early$bucket_name == "Motor vehicle and parts dealers"] /
+#   sum(industry_total_early$allocated_tax_burden, na.rm = TRUE)
 ```
 
-Excluding the non-taxable and non-allocable UCC items, approximately `r scales::percent(motor_vehicle_share, accuracy = 0.1)` of household-borne S&U taxes are from retail trade of motor vehicle and parts dealers, with general merchandise, building material and garden retailers, accommodation and food service, and other miscellaneous retailers making up the next largest shares.
 
 ```{r}
 #| label: fig-sales-tax-borne-by-households-collected-by-industry
 #| fig-cap: "Ohio sales and use tax collections borne by households (excl. business-to-business expenditures), by industry —  (2025 Ohio Tax Dept)."
-industry_total <- readr::read_csv(here("data/clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv"),
-                                  show_col_types = FALSE)
+# industry_total <- readr::read_csv(here("data/clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv"),
+#                                   show_col_types = FALSE)
 
-p_industry <- industry_total |>
-  mutate(
-    pct_total = allocated_tax_burden / sum(allocated_tax_burden, na.rm = TRUE),
-    pct_total_label = scales::percent(pct_total, accuracy = 0.1),
-    bucket_name = fct_reorder(bucket_name, allocated_tax_burden, .desc = TRUE)
-  ) |>
-  ggplot(aes(x = bucket_name, y = allocated_tax_burden)) +
-  geom_col(fill = swank_palette[1], width = 0.72) +
-  geom_text(aes(label = pct_total_label), vjust = -0.35, size = 3.2, color = "#404040") +
-  scale_y_continuous(labels = label_dollar(scale = 1e-6, suffix = "M"), expand = expansion(mult = c(0, 0.15))) +
-  labs(title = "Allocated (to consumers) Ohio county sales/use tax burden by industry",
-       subtitle = "Total allocable burden across demographic groups",
-       x = NULL, y = "Allocated tax burden",
-       caption = "Source: data/clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv (02_code/1g).") +
-  theme_swank() +
-  theme(panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
-p_industry
-ggsave(file.path(fig_dir, "fig25_cex_sales_tax_burden_by_industry.png"),
-       p_industry, width = 9, height = 6, dpi = 300, bg = "white")
+# p_industry <- industry_total |>
+#   mutate(
+#     pct_total = allocated_tax_burden / sum(allocated_tax_burden, na.rm = TRUE),
+#     pct_total_label = scales::percent(pct_total, accuracy = 0.1),
+#     bucket_name = fct_reorder(bucket_name, allocated_tax_burden, .desc = TRUE)
+#   ) |>
+#   ggplot(aes(x = bucket_name, y = allocated_tax_burden)) +
+#   geom_col(fill = swank_palette[1], width = 0.72) +
+#   geom_text(aes(label = pct_total_label), vjust = -0.35, size = 3.2, color = "#404040") +
+#   scale_y_continuous(labels = label_dollar(scale = 1e-6, suffix = "M"), expand = expansion(mult = c(0, 0.15))) +
+#   labs(title = "Allocated (to consumers) Ohio county sales/use tax burden by industry",
+#        subtitle = "Total allocable burden across demographic groups",
+#        x = NULL, y = "Allocated tax burden",
+#        caption = "Source: data/clean/intermediate/cex/sales_tax_burden/plot_data_industry_total_allocated_tax.csv (02_code/1g).") +
+#   theme_swank() +
+#   theme(panel.grid.major.x = element_blank(), axis.text.x = element_text(angle = 45, hjust = 1))
+# p_industry
+# ggsave(file.path(fig_dir, "fig25_cex_sales_tax_burden_by_industry.png"),
+#        p_industry, width = 9, height = 6, dpi = 300, bg = "white")
 ```
 
 Expenditure on different categories varies by income group. The following figure shows the share of total expenditure on each level 2 category (as defined by the UCC hierarchy) by income group. The shares sum to 100% within each income group.
@@ -1302,31 +1303,31 @@ Expenditure on different categories varies by income group. The following figure
 # 02_code/1m-cex-burden-tables.R (promoted from this chunk's former ~150-line
 # inline CEX merge -- see 09_quality_reports/plans/2026-07-13_phase3-model-
 # descriptives.md, Phase 3C); this chunk only reads and plots.
-income_agg_order <- c("<$50k", "$50k-$99,999", "$100k-$149,999", "$150k+")
+# income_agg_order <- c("<$50k", "$50k-$99,999", "$100k-$149,999", "$150k+")
 
-ce_cu_bucket_spending_demo <- readr::read_csv(
-  here("data/clean/intermediate/cex/sales_tax_burden/expenditure_share_by_income_group_level2.csv"),
-  show_col_types = FALSE
-) |>
-  mutate(income_group_agg = factor(income_group_agg, levels = income_agg_order),
-        share_label = scales::percent(share_exp, accuracy = 0.1))
+# ce_cu_bucket_spending_demo <- readr::read_csv(
+#   here("data/clean/intermediate/cex/sales_tax_burden/expenditure_share_by_income_group_level2.csv"),
+#   show_col_types = FALSE
+# ) |>
+#   mutate(income_group_agg = factor(income_group_agg, levels = income_agg_order),
+#         share_label = scales::percent(share_exp, accuracy = 0.1))
 
-p_income_bucket_share_grouped <- ce_cu_bucket_spending_demo |>
-  ggplot(aes(x = level_2_label, y = share_exp, fill = income_group_agg)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.72) +
-  geom_text(aes(label = share_label), position = position_dodge(width = 0.8), vjust = -0.25, size = 3) +
-  scale_y_continuous(labels = scales::label_percent(accuracy = 1), expand = expansion(mult = c(0, 0.12))) +
-  scale_fill_manual(values = swank_palette[1:4], name = NULL) +
-  labs(title = "Share of CEX expenditures by level-2 category and income group",
-       subtitle = "Shares sum to 100% within each income group",
-       x = NULL, y = "Share of income group's total expenditure",
-       caption = "Source: data/clean/intermediate/cex/sales_tax_burden/expenditure_share_by_income_group_level2.csv (02_code/1m).") +
-  theme_swank() +
-  theme(legend.position = "top", panel.grid.major.x = element_blank(),
-        axis.text.x = element_text(angle = 45, hjust = 1))
-p_income_bucket_share_grouped
-ggsave(file.path(fig_dir, "fig26_cex_expenditure_share_by_income_group.png"),
-       p_income_bucket_share_grouped, width = 10, height = 6, dpi = 300, bg = "white")
+# p_income_bucket_share_grouped <- ce_cu_bucket_spending_demo |>
+#   ggplot(aes(x = level_2_label, y = share_exp, fill = income_group_agg)) +
+#   geom_col(position = position_dodge(width = 0.8), width = 0.72) +
+#   geom_text(aes(label = share_label), position = position_dodge(width = 0.8), vjust = -0.25, size = 3) +
+#   scale_y_continuous(labels = scales::label_percent(accuracy = 1), expand = expansion(mult = c(0, 0.12))) +
+#   scale_fill_manual(values = swank_palette[1:4], name = NULL) +
+#   labs(title = "Share of CEX expenditures by level-2 category and income group",
+#        subtitle = "Shares sum to 100% within each income group",
+#        x = NULL, y = "Share of income group's total expenditure",
+#        caption = "Source: data/clean/intermediate/cex/sales_tax_burden/expenditure_share_by_income_group_level2.csv (02_code/1m).") +
+#   theme_swank() +
+#   theme(legend.position = "top", panel.grid.major.x = element_blank(),
+#         axis.text.x = element_text(angle = 45, hjust = 1))
+# p_income_bucket_share_grouped
+# ggsave(file.path(fig_dir, "fig26_cex_expenditure_share_by_income_group.png"),
+#        p_income_bucket_share_grouped, width = 10, height = 6, dpi = 300, bg = "white")
 ```
 
 Because different products and services face different sales-tax rates and exemptions, the incidence of the sales tax varies across income groups. The figure below combines the CEX expenditure data with Ohio's sales-tax rates and exemptions, via the UCC-NAICS crosswalk, to estimate the sales-tax burden by income group directly — the descriptive counterpart to the property-tax incidence figures above, and the input `02_code/3c-sales-incidence.R` carries forward into Part II's replacement-scenario incidence tables.
@@ -1338,28 +1339,28 @@ Because different products and services face different sales-tax rates and exemp
 # tables.R (promoted from this chunk's former inline aggregation -- see
 # 09_quality_reports/plans/2026-07-13_phase3-model-descriptives.md, Phase 3C);
 # this chunk only reads and plots.
-income_order <- c("<$25k", "$25k-$49,999", "$50k-$74,999", "$75k-$99,999",
-                  "$100k-$149,999", "$150k+")
+# income_order <- c("<$25k", "$25k-$49,999", "$50k-$74,999", "$75k-$99,999",
+#                   "$100k-$149,999", "$150k+")
 
-income_tax_burden_2025 <- readr::read_csv(
-  here("data/clean/intermediate/cex/sales_tax_burden/sales_tax_burden_by_income_group.csv"),
-  show_col_types = FALSE
-) |>
-  mutate(income_group = factor(income_group, levels = income_order),
-        tax_burden_pct_income_label = scales::percent(tax_burden_pct_income, accuracy = 0.01))
+# income_tax_burden_2025 <- readr::read_csv(
+#   here("data/clean/intermediate/cex/sales_tax_burden/sales_tax_burden_by_income_group.csv"),
+#   show_col_types = FALSE
+# ) |>
+#   mutate(income_group = factor(income_group, levels = income_order),
+#         tax_burden_pct_income_label = scales::percent(tax_burden_pct_income, accuracy = 0.01))
 
-p_income_tax_burden_2025 <- income_tax_burden_2025 |>
-  ggplot(aes(x = income_group, y = tax_burden_pct_income)) +
-  geom_col(fill = swank_palette[1], width = 0.7) +
-  geom_text(aes(label = tax_burden_pct_income_label), vjust = -0.35, size = 3.5, color = "#404040") +
-  scale_y_continuous(labels = scales::label_percent(accuracy = 0.1), expand = expansion(mult = c(0, 0.12))) +
-  labs(title = "Average sales tax burden as a share of income",
-       subtitle = "2025 allocated sales/use tax burden divided by average annual CU income, 2022-2024",
-       x = NULL, y = "Sales tax burden as share of income",
-       caption = "Source: data/clean/intermediate/cex/sales_tax_burden/sales_tax_burden_by_income_group.csv (02_code/1m).") +
-  theme_swank() +
-  theme(panel.grid.major.x = element_blank())
-p_income_tax_burden_2025
-ggsave(file.path(fig_dir, "fig27_cex_sales_tax_burden_by_income_group.png"),
-       p_income_tax_burden_2025, width = 8, height = 5, dpi = 300, bg = "white")
+# p_income_tax_burden_2025 <- income_tax_burden_2025 |>
+#   ggplot(aes(x = income_group, y = tax_burden_pct_income)) +
+#   geom_col(fill = swank_palette[1], width = 0.7) +
+#   geom_text(aes(label = tax_burden_pct_income_label), vjust = -0.35, size = 3.5, color = "#404040") +
+#   scale_y_continuous(labels = scales::label_percent(accuracy = 0.1), expand = expansion(mult = c(0, 0.12))) +
+#   labs(title = "Average sales tax burden as a share of income",
+#        subtitle = "2025 allocated sales/use tax burden divided by average annual CU income, 2022-2024",
+#        x = NULL, y = "Sales tax burden as share of income",
+#        caption = "Source: data/clean/intermediate/cex/sales_tax_burden/sales_tax_burden_by_income_group.csv (02_code/1m).") +
+#   theme_swank() +
+#   theme(panel.grid.major.x = element_blank())
+# p_income_tax_burden_2025
+# ggsave(file.path(fig_dir, "fig27_cex_sales_tax_burden_by_income_group.png"),
+#        p_income_tax_burden_2025, width = 8, height = 5, dpi = 300, bg = "white")
 ```
